@@ -24,8 +24,8 @@ function getInitialAdminUser() {
   return null;
 }
 
-// Synchronously resolve active tab from URL path & admin session state
-function getInitialTab(initialUser) {
+// Synchronously resolve active tab from URL path
+function getInitialTab() {
   if (typeof window === 'undefined') return 'register';
   const pathname = window.location.pathname;
   const hash = window.location.hash;
@@ -36,23 +36,12 @@ function getInitialTab(initialUser) {
   if (pathname === '/checkin' || pathname.startsWith('/checkin/') || hash === '#checkin') return 'checkin';
   if (pathname === '/lookup') return 'ticket-lookup';
 
-  // If opening the application root '/' while an admin session is active:
-  const viewingPublic = sessionStorage.getItem('muthaallim_view_public');
-  if (initialUser && !viewingPublic) {
-    if (initialUser.role === 'subadmin') {
-      window.history.replaceState({}, '', '/subadmin');
-      return 'subadmin';
-    }
-    window.history.replaceState({}, '', '/admin');
-    return 'admin';
-  }
-
   return 'register';
 }
 
 export default function App() {
   const [adminUser, setAdminUser] = useState(getInitialAdminUser);
-  const [activeTab, setActiveTab] = useState(() => getInitialTab(getInitialAdminUser()));
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const [currentAttendee, setCurrentAttendee] = useState(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [eventSettings, setEventSettings] = useState(null);
@@ -209,7 +198,6 @@ export default function App() {
   const handleAdminLoginSuccess = (admin) => {
     setAdminUser(admin);
     setLoginModalOpen(false);
-    sessionStorage.removeItem('muthaallim_view_public');
     try {
       localStorage.setItem('muthaallim_admin_user', JSON.stringify(admin));
     } catch {}
@@ -226,7 +214,6 @@ export default function App() {
   const handleAdminLogout = () => {
     localStorage.removeItem('muthaallim_admin_token');
     localStorage.removeItem('muthaallim_admin_user');
-    sessionStorage.removeItem('muthaallim_view_public');
     sessionStorage.removeItem('muthaallim_analytics_cache');
     setAdminUser(null);
     setActiveTab('register');
@@ -288,7 +275,6 @@ export default function App() {
               adminUser={adminUser}
               onLogout={handleAdminLogout}
               onBack={() => {
-                sessionStorage.setItem('muthaallim_view_public', 'true');
                 setActiveTab('register');
                 navigate('/');
               }}
@@ -324,7 +310,6 @@ export default function App() {
               adminUser={adminUser}
               onLogout={handleAdminLogout}
               onBack={() => {
-                sessionStorage.setItem('muthaallim_view_public', 'true');
                 setActiveTab('register');
                 navigate('/');
               }}
@@ -356,33 +341,12 @@ export default function App() {
         onClose={() => {
           setLoginModalOpen(false);
           if ((activeTab === 'admin' || activeTab === 'subadmin') && !adminUser) {
-            sessionStorage.setItem('muthaallim_view_public', 'true');
             setActiveTab('register');
             navigate('/');
           }
         }}
         onLoginSuccess={handleAdminLoginSuccess}
       />
-
-      {/* Floating Shortcut to Return to Admin / Sub-Admin Dashboard if Admin is Browsing Public Website */}
-      {adminUser && !isFullLayout && (
-        <button
-          onClick={() => {
-            sessionStorage.removeItem('muthaallim_view_public');
-            if (adminUser.role === 'subadmin') {
-              setActiveTab('subadmin');
-              navigate('/subadmin');
-            } else {
-              setActiveTab('admin');
-              navigate('/admin');
-            }
-          }}
-          className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/95 hover:bg-slate-900 text-emerald-400 border border-emerald-500/30 text-xs font-semibold shadow-xl backdrop-blur cursor-pointer transition hover:scale-105 no-print"
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Return to {adminUser.role === 'subadmin' ? 'Sub-Admin' : 'Admin'} Console</span>
-        </button>
-      )}
 
       {/* Footer (Public site only; Admin & Sub-Admin dashboards have integrated branding sidebars) */}
       {!isFullLayout && (

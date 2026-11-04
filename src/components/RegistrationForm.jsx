@@ -260,7 +260,6 @@ export default function RegistrationForm({
   };
 
   const selectedDivision = divisions.find(d => String(d.id) === String(formData.division_id));
-  const selectedSector = sectors.find(s => String(s.id) === String(formData.sector_id));
 
   return (
     <div id="registration-section" className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">

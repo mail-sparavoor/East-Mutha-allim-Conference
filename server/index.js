@@ -39,29 +39,30 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     event: 'Muthaallim Conference 2026',
-    time: new Date().toISOString()
+    time: new Date().toISOString(),
+    env: process.env.VERCEL ? 'vercel-serverless' : 'standalone'
   });
 });
 
-// API Routes
-app.use('/api/attendees', attendeesRoutes);
-app.use('/api/hierarchy', hierarchyRoutes);
-app.use('/api/checkin', checkinRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/settings', settingsRoutes);
+// API Routes (Mounted with /api prefix as well as without /api for Vercel rewrite compatibility)
+app.use(['/api/attendees', '/attendees'], attendeesRoutes);
+app.use(['/api/hierarchy', '/hierarchy'], hierarchyRoutes);
+app.use(['/api/checkin', '/checkin'], checkinRoutes);
+app.use(['/api/admin', '/admin'], adminRoutes);
+app.use(['/api/settings', '/settings'], settingsRoutes);
 
 // Explicit 404 handler for any unhandled /api/* requests - ALWAYS returns JSON, never HTML
-app.all('/api/*', (req, res) => {
+app.all(['/api/*', '/api'], (req, res) => {
   res.status(404).json({
     error: `API route not found: ${req.method} ${req.originalUrl}`
   });
 });
 
-// Serve frontend in production (dist directory)
+// Serve frontend in production (dist directory) when running standalone
 const distPath = path.join(projectRoot, 'dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
@@ -87,11 +88,19 @@ app.use((err, req, res, next) => {
 
 export { app };
 
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(` Muthaallim Conference Registration & Ticketing Server `);
-  console.log(` Backend listening on: http://localhost:${PORT}        `);
-  console.log(` Super Admin: username: admin    / password: admin123  `);
-  console.log(` Sub Admin:   username: subadmin / password: subadmin123`);
-  console.log(`=======================================================`);
-});
+// Determine if this file is the direct entrypoint or imported as a module (e.g. by Vercel serverless)
+const isMainScript = process.argv[1] && (
+  process.argv[1].endsWith('server' + path.sep + 'index.js') ||
+  process.argv[1].endsWith('server/index.js')
+);
+
+if (isMainScript && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(` Muthaallim Conference Registration & Ticketing Server `);
+    console.log(` Backend listening on: http://localhost:${PORT}        `);
+    console.log(` Super Admin: username: admin    / password: admin123  `);
+    console.log(` Sub Admin:   username: subadmin / password: subadmin123`);
+    console.log(`=======================================================`);
+  });
+}

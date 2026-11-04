@@ -63,19 +63,19 @@ export default function LandingPage({
 
         <div className="relative z-10 max-w-6xl xl:max-w-7xl mx-auto">
           {/* Two-Column Grid: Left Column = Centenary & Conference Details, Right Column = Official Poster & Register Now */}
-          <div className="flex flex-col lg:flex-row gap-8 lg:gap-10 xl:gap-14 items-center justify-between">
+          <div className="flex flex-col lg:flex-row gap-8 lg:gap-0 items-center justify-center">
             
             {/* ================= LEFT COLUMN: Samastha Centenary Conference Official Visual ================= */}
-            <div className="order-1 w-full lg:flex-1 flex items-center justify-center lg:justify-start">
+            <div className="order-1 w-full lg:w-auto flex items-center justify-center lg:justify-end relative z-20 lg:-mr-16 xl:-mr-24 2xl:-mr-28">
               <img 
                 src="/samastha-centenary-hero.png" 
                 alt="Samastha Centenary Conference" 
-                className="w-full max-w-lg lg:max-w-none lg:w-auto lg:h-[480px] xl:h-[515px] h-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)] select-none pointer-events-none"
+                className="w-full max-w-lg lg:max-w-none lg:w-auto lg:h-[470px] xl:h-[510px] h-auto object-contain drop-shadow-[0_15px_35px_rgba(0,0,0,0.6)] select-none pointer-events-none"
               />
             </div>
 
             {/* ================= RIGHT COLUMN: Official Poster Card & Actions ================= */}
-            <div className="order-2 w-full lg:w-[400px] xl:w-[440px] flex-shrink-0 flex flex-col gap-5 sm:gap-6 justify-center items-center max-w-md mx-auto lg:mx-0">
+            <div className="order-2 w-full lg:w-[390px] xl:w-[430px] flex-shrink-0 flex flex-col gap-5 sm:gap-6 justify-center items-center max-w-md mx-auto lg:mx-0 relative z-10">
               <div className="w-full bg-white/10 backdrop-blur-xl p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-white/20 shadow-2xl text-center space-y-3 sm:space-y-4">
                 
                 {/* Official Conference Poster Image */}

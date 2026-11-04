@@ -111,9 +111,14 @@ INSERT INTO `settings` (`key`, `value`) VALUES
 ('contact_email', 'muthaallim.east@gmail.com')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
 
--- Default Superadmin User (username: admin / password: admin123)
+-- Default Superadmin User (username: emcadmin / password: emcsadmin)
 INSERT INTO `admins` (`username`, `password_hash`, `role`) VALUES
-('admin', '$2a$10$ooypNcRqUJGL1v8/HECveOKtKcBt1uQb49Ibl2CU.gkmgzx8o4QK6', 'superadmin')
+('emcadmin', '$2a$10$dYiQqW8BxU665sm3l/1G9e/N9rhpYf1DItkSKo0wS/NP9qtzOu1ca', 'superadmin')
+ON DUPLICATE KEY UPDATE `password_hash` = VALUES(`password_hash`);
+
+-- Default Sub-Admin User (username: cmsadmin / password: passcmseast)
+INSERT INTO `admins` (`username`, `password_hash`, `role`) VALUES
+('cmsadmin', '$2a$10$/UrCkJxcBu6XLrAbZWqJtulrM4GVmXh078QQ9XBnNKI0EXAOZOkH6', 'subadmin')
 ON DUPLICATE KEY UPDATE `password_hash` = VALUES(`password_hash`);
 
 -- Default Divisions (Only Division is required in the hierarchy)

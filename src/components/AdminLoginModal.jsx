@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Lock, User, Key, X, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { Lock, User, Key, X, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -74,7 +74,7 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
+                placeholder="Enter username"
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               />
             </div>
@@ -95,41 +95,6 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
                 placeholder="••••••••"
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               />
-            </div>
-          </div>
-
-          {/* Quick Credential Presets */}
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                setUsername('admin');
-                setPassword('admin123');
-              }}
-              className="flex-1 py-1 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-200 transition text-center cursor-pointer"
-            >
-              Autofill: Super Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setUsername('subadmin');
-                setPassword('subadmin123');
-              }}
-              className="flex-1 py-1 px-2 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11px] font-bold border border-teal-200 transition text-center cursor-pointer"
-            >
-              Autofill: Sub-Admin
-            </button>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-500 space-y-1">
-            <div className="flex items-center gap-1.5 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-              <span><strong>Super Admin:</strong> admin / admin123 (Full control)</span>
-            </div>
-            <div className="flex items-center gap-1.5 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
-              <span><strong>Sub-Admin:</strong> subadmin / subadmin123 (Analytics &amp; Directory)</span>
             </div>
           </div>
 

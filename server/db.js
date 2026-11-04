@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -152,18 +153,31 @@ export async function initializeSeedData() {
       await insertSetting.run('contact_email', 'muthaallim.east@gmail.com');
     }
 
-    // 2. Admin check (username: admin / password: admin123, subadmin / subadmin123)
-    const checkAdmin = await db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
+    // 2. Admin accounts check (Super Admin: emcadmin / emcsadmin, Sub-Admin: cmsadmin / passcmseast)
+    const checkAdmin = await db.prepare('SELECT id, password_hash FROM admins WHERE username = ?').get('emcadmin');
     if (!checkAdmin) {
+      const superAdminHash = bcrypt.hashSync('emcsadmin', 10);
       await db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)')
-        .run('admin', '$2a$10$ooypNcRqUJGL1v8/HECveOKtKcBt1uQb49Ibl2CU.gkmgzx8o4QK6', 'superadmin');
+        .run('emcadmin', superAdminHash, 'superadmin');
+    } else if (!bcrypt.compareSync('emcsadmin', checkAdmin.password_hash)) {
+      const superAdminHash = bcrypt.hashSync('emcsadmin', 10);
+      await db.prepare('UPDATE admins SET password_hash = ?, role = ? WHERE username = ?')
+        .run(superAdminHash, 'superadmin', 'emcadmin');
     }
 
-    const checkSubAdmin = await db.prepare('SELECT id FROM admins WHERE username = ?').get('subadmin');
+    const checkSubAdmin = await db.prepare('SELECT id, password_hash FROM admins WHERE username = ?').get('cmsadmin');
     if (!checkSubAdmin) {
+      const subAdminHash = bcrypt.hashSync('passcmseast', 10);
       await db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)')
-        .run('subadmin', '$2a$10$ooypNcRqUJGL1v8/HECveOKtKcBt1uQb49Ibl2CU.gkmgzx8o4QK6', 'subadmin');
+        .run('cmsadmin', subAdminHash, 'subadmin');
+    } else if (!bcrypt.compareSync('passcmseast', checkSubAdmin.password_hash)) {
+      const subAdminHash = bcrypt.hashSync('passcmseast', 10);
+      await db.prepare('UPDATE admins SET password_hash = ?, role = ? WHERE username = ?')
+        .run(subAdminHash, 'subadmin', 'cmsadmin');
     }
+
+    // Clean up legacy demo accounts
+    await db.prepare('DELETE FROM admins WHERE username IN (?, ?)').run('admin', 'subadmin');
 
     // 3. Divisions check
     const divCount = await db.prepare('SELECT COUNT(*) as count FROM divisions').get();

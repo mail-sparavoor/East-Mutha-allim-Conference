@@ -99,8 +99,8 @@ if (isMainScript && !process.env.VERCEL) {
     console.log(`=======================================================`);
     console.log(` Muthaallim Conference Registration & Ticketing Server `);
     console.log(` Backend listening on: http://localhost:${PORT}        `);
-    console.log(` Super Admin: username: admin    / password: admin123  `);
-    console.log(` Sub Admin:   username: subadmin / password: subadmin123`);
+    console.log(` Super Admin: username: emcadmin (Full control) `);
+    console.log(` Sub Admin:   username: cmsadmin (Analytics & Directory)`);
     console.log(`=======================================================`);
   });
 }

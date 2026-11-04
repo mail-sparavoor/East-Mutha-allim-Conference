@@ -43,7 +43,8 @@ A complete full-stack web application designed for the **Muthaallim Conference**
 
 ### 4. Administrative Dashboard (`/admin`)
 - **Secure Authentication**: Administrator login with JWT token session.
-  - **Default Credentials**: `admin` / `admin123`
+  - **Super Admin**: `emcadmin` / `emcsadmin`
+  - **Sub-Admin**: `cmsadmin` / `passcmseast`
 - **Analytics & Breakdowns**:
   - Total registrations, venue admissions, pending check-ins, admission rate.
   - Distribution breakdown cards for **Divisions**, **Sectors**, **Units**, and **Dars / Dawa Colleges**.
@@ -93,7 +94,8 @@ http://localhost:5050
 
 | Role | Username | Password | Access |
 |---|---|---|---|
-| Super Administrator | `admin` | `admin123` | Full Dashboard, Hierarchy Management, CSV Export, Attendee Directory |
+| Super Administrator | `emcadmin` | `emcsadmin` | Full Dashboard, Hierarchy Management, CSV Export, Event Settings |
+| Sub-Administrator | `cmsadmin` | `passcmseast` | Overview & Analytics, Attendee Directory |
 | Gate Coordinator | *Public Portal* | *No password required* | Gate Scanner tab accessible to on-ground volunteers |
 
 ---

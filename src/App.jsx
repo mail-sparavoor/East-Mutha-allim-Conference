@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode } from 'lucide-react';
-import Navbar from './components/Navbar';
 import LandingPage from './components/LandingPage';
 import RegistrationForm from './components/RegistrationForm';
 import TicketPass from './components/TicketPass';
@@ -239,37 +237,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-50 via-slate-100/50 to-slate-100">
-      {/* Top Navbar on Public & Scanner pages */}
-      {!isFullLayout && (
-        <Navbar
-          activeTab={activeTab}
-          setActiveTab={(tab) => {
-            if (tab === 'register') {
-              setActiveTab('register');
-              navigate('/');
-            } else if (tab === 'ticket-lookup') {
-              setActiveTab('ticket-lookup');
-              navigate('/lookup');
-            } else if (tab === 'checkin') {
-              setActiveTab('checkin');
-              navigate('/checkin');
-            } else if (tab === 'admin') {
-              if (adminUser?.role === 'subadmin') {
-                setActiveTab('subadmin');
-                navigate('/subadmin');
-              } else {
-                setActiveTab('admin');
-                navigate('/admin');
-              }
-            }
-          }}
-          adminUser={adminUser}
-          onLogout={handleAdminLogout}
-          onOpenLogin={() => setLoginModalOpen(true)}
-          eventSettings={eventSettings}
-        />
-      )}
-
       {/* Main Content View */}
       <main className={`flex-1 ${isFullLayout ? '' : 'pb-16'}`}>
         {activeTab === 'register' && (
@@ -279,10 +246,6 @@ export default function App() {
             onOpenLookup={() => {
               setActiveTab('ticket-lookup');
               navigate('/lookup');
-            }}
-            onOpenCheckIn={() => {
-              setActiveTab('checkin');
-              navigate('/checkin');
             }}
           />
         )}
@@ -312,16 +275,8 @@ export default function App() {
           <ScannerCheckIn
             adminUser={adminUser}
             onBack={() => {
-              if (adminUser?.role === 'subadmin') {
-                setActiveTab('subadmin');
-                navigate('/subadmin');
-              } else if (adminUser) {
-                setActiveTab('admin');
-                navigate('/admin');
-              } else {
-                setActiveTab('register');
-                navigate('/');
-              }
+              setActiveTab('register');
+              navigate('/');
             }}
           />
         )}
@@ -332,10 +287,6 @@ export default function App() {
             <AdminDashboard
               adminUser={adminUser}
               onLogout={handleAdminLogout}
-              onOpenCheckIn={() => {
-                setActiveTab('checkin');
-                navigate('/checkin');
-              }}
               onBack={() => {
                 sessionStorage.setItem('muthaallim_view_public', 'true');
                 setActiveTab('register');
@@ -372,10 +323,6 @@ export default function App() {
             <SubAdminDashboard
               adminUser={adminUser}
               onLogout={handleAdminLogout}
-              onOpenCheckIn={() => {
-                setActiveTab('checkin');
-                navigate('/checkin');
-              }}
               onBack={() => {
                 sessionStorage.setItem('muthaallim_view_public', 'true');
                 setActiveTab('register');
@@ -440,50 +387,10 @@ export default function App() {
       {/* Footer (Public site only; Admin & Sub-Admin dashboards have integrated branding sidebars) */}
       {!isFullLayout && (
         <footer className="bg-slate-950 border-t border-slate-900 py-8 text-center text-xs text-slate-500 no-print">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="max-w-7xl mx-auto px-4 flex items-center justify-center">
             <span className="font-semibold text-slate-400">
               SSF Malappuram East District Committee
             </span>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-slate-400">
-              <button 
-                onClick={() => { setActiveTab('register'); navigate('/'); }} 
-                className="hover:text-emerald-400 transition cursor-pointer"
-              >
-                Home
-              </button>
-              <span>•</span>
-              <button 
-                onClick={() => { setActiveTab('ticket-lookup'); navigate('/lookup'); }} 
-                className="hover:text-emerald-400 transition cursor-pointer"
-              >
-                Find Ticket
-              </button>
-              <span>•</span>
-              <button 
-                onClick={() => { setActiveTab('checkin'); navigate('/checkin'); }} 
-                className="hover:text-emerald-300 font-semibold text-emerald-400 transition flex items-center gap-1 cursor-pointer"
-              >
-                <QrCode className="w-3.5 h-3.5 text-emerald-400" /> 
-                <span>Gate Scanner</span>
-              </button>
-              <span>•</span>
-              <button 
-                onClick={() => {
-                  if (adminUser?.role === 'subadmin') {
-                    setActiveTab('subadmin');
-                    navigate('/subadmin');
-                  } else if (adminUser) {
-                    setActiveTab('admin');
-                    navigate('/admin');
-                  } else {
-                    setLoginModalOpen(true);
-                  }
-                }} 
-                className="hover:text-emerald-400 transition cursor-pointer"
-              >
-                Admin Portal
-              </button>
-            </div>
           </div>
         </footer>
       )}

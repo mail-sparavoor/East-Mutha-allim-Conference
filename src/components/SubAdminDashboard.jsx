@@ -4,17 +4,16 @@ import {
   Users, 
   RefreshCw, 
   LogOut, 
-  ArrowLeft, 
-  Menu, 
-  X, 
-  Shield,
-  QrCode
+  ArrowLeft,
+  Menu,
+  X,
+  Shield
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AttendeeTable from './AttendeeTable';
 import { api } from '../utils/api';
 
-export default function SubAdminDashboard({ adminUser, onLogout, onViewTicket, onBack, onOpenCheckIn }) {
+export default function SubAdminDashboard({ adminUser, onLogout, onViewTicket, onBack }) {
   const [activeTab, setActiveTab] = useState('analytics'); // 'analytics' | 'attendees'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(() => {
@@ -166,17 +165,6 @@ export default function SubAdminDashboard({ adminUser, onLogout, onViewTicket, o
 
       {/* Bottom Actions & District Branding */}
       <div className="p-4 border-t border-slate-800/90 space-y-2">
-        {onOpenCheckIn && (
-          <button
-            onClick={onOpenCheckIn}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-teal-950/60 hover:bg-teal-900/80 text-teal-300 text-xs font-semibold border border-teal-800/60 transition cursor-pointer"
-            title="Open Venue Gate Admission Scanner"
-          >
-            <QrCode className="w-3.5 h-3.5 text-teal-400" />
-            <span>Gate Scanner</span>
-          </button>
-        )}
-
         {onBack && (
           <button
             onClick={onBack}
@@ -308,17 +296,6 @@ export default function SubAdminDashboard({ adminUser, onLogout, onViewTicket, o
           </div>
 
           <div className="flex items-center gap-2">
-            {onOpenCheckIn && (
-              <button
-                onClick={onOpenCheckIn}
-                className="px-3 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-semibold border border-teal-200 transition flex items-center gap-1.5 cursor-pointer"
-                title="Open Venue Gate Admission Scanner"
-              >
-                <QrCode className="w-3.5 h-3.5 text-teal-600" />
-                <span>Gate Scanner</span>
-              </button>
-            )}
-
             {onBack && (
               <button
                 onClick={onBack}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowRight,
-  QrCode
+  ArrowRight
 } from 'lucide-react';
 import RegistrationForm from './RegistrationForm';
 
@@ -31,8 +30,7 @@ function CentenaryLogo() {
 export default function LandingPage({ 
   onRegistrationSuccess, 
   eventSettings,
-  onOpenLookup,
-  onOpenCheckIn 
+  onOpenLookup 
 }) {
   // Countdown Timer
   const [timeLeft, setTimeLeft] = useState({
@@ -160,23 +158,14 @@ export default function LandingPage({
                   </button>
                 </div>
 
-                {/* Retrieve Pass Quick Link & Gate Scanner */}
-                <div className="text-center pt-1 flex flex-col gap-1.5 items-center">
+                {/* Retrieve Pass Quick Link */}
+                <div className="text-center pt-0.5">
                   <button
                     onClick={onOpenLookup}
                     className="text-xs font-semibold text-slate-300 hover:text-amber-300 underline underline-offset-4 transition cursor-pointer"
                   >
                     Already registered? Find your ticket pass
                   </button>
-                  {onOpenCheckIn && (
-                    <button
-                      onClick={onOpenCheckIn}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition cursor-pointer pt-0.5"
-                    >
-                      <QrCode className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Gate Volunteers: Open Admission Scanner</span>
-                    </button>
-                  )}
                 </div>
               </div>
 

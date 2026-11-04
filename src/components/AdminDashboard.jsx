@@ -18,15 +18,14 @@ import {
   TrendingUp,
   UserCheck,
   ExternalLink,
-  Shield,
-  QrCode
+  Shield
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AttendeeTable from './AttendeeTable';
 import HierarchyManager from './HierarchyManager';
 import { api } from '../utils/api';
 
-export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBack, onSwitchToSubAdmin, onOpenCheckIn }) {
+export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBack, onSwitchToSubAdmin }) {
   const [activeTab, setActiveTab] = useState('analytics'); // 'analytics' | 'attendees' | 'hierarchy' | 'settings'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(() => {
@@ -231,17 +230,6 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
 
       {/* Bottom Actions & Copyright */}
       <div className="p-4 border-t border-slate-800/90 space-y-2">
-        {onOpenCheckIn && (
-          <button
-            onClick={onOpenCheckIn}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-xs font-semibold border border-emerald-800/60 transition cursor-pointer"
-            title="Open Venue Gate Admission Scanner"
-          >
-            <QrCode className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Gate Scanner</span>
-          </button>
-        )}
-
         {onSwitchToSubAdmin && (
           <button
             onClick={onSwitchToSubAdmin}
@@ -321,15 +309,6 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
         </div>
 
         <div className="flex items-center gap-1.5">
-          {onOpenCheckIn && (
-            <button
-              onClick={onOpenCheckIn}
-              className="p-2 rounded-xl bg-emerald-950/60 text-emerald-300 border border-emerald-800/80 hover:bg-emerald-900 transition"
-              title="Open Venue Gate Scanner"
-            >
-              <QrCode className="w-4 h-4" />
-            </button>
-          )}
           {onBack && (
             <button
               onClick={onBack}
@@ -391,17 +370,6 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
           </div>
 
           <div className="flex items-center gap-2">
-            {onOpenCheckIn && (
-              <button
-                onClick={onOpenCheckIn}
-                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200 transition flex items-center gap-1.5 cursor-pointer"
-                title="Open Venue Gate Admission Scanner"
-              >
-                <QrCode className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Gate Scanner</span>
-              </button>
-            )}
-
             {onSwitchToSubAdmin && (
               <button
                 onClick={onSwitchToSubAdmin}

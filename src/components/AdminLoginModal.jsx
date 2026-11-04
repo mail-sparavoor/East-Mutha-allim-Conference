@@ -23,8 +23,8 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
     try {
       const data = await api.adminLogin(username.trim(), password);
       localStorage.setItem('muthaallim_admin_token', data.token);
+      localStorage.setItem('muthaallim_admin_user', JSON.stringify(data.admin));
       onLoginSuccess(data.admin);
-      onClose();
     } catch (err) {
       setError(err.message || 'Invalid username or password');
     } finally {

@@ -16,9 +16,16 @@ import { api } from '../utils/api';
 export default function SubAdminDashboard({ adminUser, onLogout, onViewTicket, onBack }) {
   const [activeTab, setActiveTab] = useState('analytics'); // 'analytics' | 'attendees'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsData, setAnalyticsData] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem('muthaallim_analytics_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [analyticsError, setAnalyticsError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchAnalytics = async () => {
     try {
@@ -26,6 +33,9 @@ export default function SubAdminDashboard({ adminUser, onLogout, onViewTicket, o
       setAnalyticsError(null);
       const data = await api.getAnalytics();
       setAnalyticsData(data);
+      try {
+        sessionStorage.setItem('muthaallim_analytics_cache', JSON.stringify(data));
+      } catch {}
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
       setAnalyticsError(err.message || 'Failed to load analytics');

@@ -9,10 +9,51 @@ import SubAdminDashboard from './components/SubAdminDashboard';
 import AdminLoginModal from './components/AdminLoginModal';
 import { api } from './utils/api';
 
+// Synchronously resolve logged-in admin session from localStorage
+function getInitialAdminUser() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const token = localStorage.getItem('muthaallim_admin_token');
+    const userStr = localStorage.getItem('muthaallim_admin_user');
+    if (token && userStr) {
+      return JSON.parse(userStr);
+    }
+  } catch (e) {
+    // ignore corrupted localStorage
+  }
+  return null;
+}
+
+// Synchronously resolve active tab from URL path & admin session state
+function getInitialTab(initialUser) {
+  if (typeof window === 'undefined') return 'register';
+  const pathname = window.location.pathname;
+  const hash = window.location.hash;
+
+  if (pathname.startsWith('/ticket/') || hash.startsWith('#ticket=')) return 'ticket';
+  if (pathname === '/admin' || pathname.startsWith('/admin/') || hash === '#admin') return 'admin';
+  if (pathname === '/subadmin' || pathname.startsWith('/subadmin/') || hash === '#subadmin') return 'subadmin';
+  if (pathname === '/checkin' || pathname.startsWith('/checkin/') || hash === '#checkin') return 'checkin';
+  if (pathname === '/lookup') return 'ticket-lookup';
+
+  // If opening the application root '/' while an admin session is active:
+  const viewingPublic = sessionStorage.getItem('muthaallim_view_public');
+  if (initialUser && !viewingPublic) {
+    if (initialUser.role === 'subadmin') {
+      window.history.replaceState({}, '', '/subadmin');
+      return 'subadmin';
+    }
+    window.history.replaceState({}, '', '/admin');
+    return 'admin';
+  }
+
+  return 'register';
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('register'); // 'register' | 'ticket' | 'ticket-lookup' | 'checkin' | 'admin' | 'subadmin'
+  const [adminUser, setAdminUser] = useState(getInitialAdminUser);
+  const [activeTab, setActiveTab] = useState(() => getInitialTab(getInitialAdminUser()));
   const [currentAttendee, setCurrentAttendee] = useState(null);
-  const [adminUser, setAdminUser] = useState(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [eventSettings, setEventSettings] = useState(null);
 
@@ -86,30 +127,53 @@ export default function App() {
     setActiveTab('register');
   };
 
-  // Load public settings, verify existing admin session, and initialize clean routing
+  // Background initialization & routing synchronization
   useEffect(() => {
-    async function init() {
-      try {
-        const settings = await api.getSettings();
-        setEventSettings(settings);
-      } catch (err) {
-        console.error('Failed to load settings:', err);
-      }
-
-      const token = localStorage.getItem('muthaallim_admin_token');
-      if (token) {
-        try {
-          const user = await api.getAdminMe();
-          setAdminUser(user);
-        } catch (err) {
-          localStorage.removeItem('muthaallim_admin_token');
-          setAdminUser(null);
-        }
-      }
-
-      handlePathRouting();
+    // If opened with legacy hash, replace immediately
+    const hash = window.location.hash;
+    if (hash === '#admin') navigate('/admin', true);
+    else if (hash === '#subadmin') navigate('/subadmin', true);
+    else if (hash === '#checkin') navigate('/checkin', true);
+    else if (hash.startsWith('#ticket=')) {
+      const ticketId = hash.replace('#ticket=', '');
+      navigate(`/ticket/${ticketId}`, true);
     }
-    init();
+
+    // If initial tab is ticket, load attendee data
+    const pathname = window.location.pathname;
+    if (pathname.startsWith('/ticket/')) {
+      const ticketId = pathname.replace('/ticket/', '').replace(/\/$/, '');
+      if (ticketId) {
+        api.getTicket(ticketId)
+          .then((att) => {
+            setCurrentAttendee(att);
+            setActiveTab('ticket');
+          })
+          .catch((e) => console.error('Failed to load linked ticket:', e));
+      }
+    }
+
+    // Background verify admin token session with server
+    const token = localStorage.getItem('muthaallim_admin_token');
+    if (token) {
+      api.getAdminMe()
+        .then((user) => {
+          setAdminUser(user);
+          try {
+            localStorage.setItem('muthaallim_admin_user', JSON.stringify(user));
+          } catch {}
+        })
+        .catch(() => {
+          localStorage.removeItem('muthaallim_admin_token');
+          localStorage.removeItem('muthaallim_admin_user');
+          setAdminUser(null);
+        });
+    }
+
+    // Background load event settings
+    api.getSettings()
+      .then((settings) => setEventSettings(settings))
+      .catch((err) => console.error('Failed to load settings:', err));
 
     // Listen for browser Back/Forward navigation
     const onPopState = () => {
@@ -123,6 +187,8 @@ export default function App() {
   useEffect(() => {
     if ((activeTab === 'admin' || activeTab === 'subadmin') && !adminUser) {
       setLoginModalOpen(true);
+    } else {
+      setLoginModalOpen(false);
     }
   }, [activeTab, adminUser]);
 
@@ -142,27 +208,29 @@ export default function App() {
 
   const handleAdminLoginSuccess = (admin) => {
     setAdminUser(admin);
+    setLoginModalOpen(false);
+    sessionStorage.removeItem('muthaallim_view_public');
+    try {
+      localStorage.setItem('muthaallim_admin_user', JSON.stringify(admin));
+    } catch {}
+
     if (admin.role === 'subadmin') {
       setActiveTab('subadmin');
       navigate('/subadmin');
     } else {
-      if (window.location.pathname === '/subadmin' || window.location.hash === '#subadmin') {
-        setActiveTab('subadmin');
-        navigate('/subadmin');
-      } else {
-        setActiveTab('admin');
-        navigate('/admin');
-      }
+      setActiveTab('admin');
+      navigate('/admin');
     }
   };
 
   const handleAdminLogout = () => {
     localStorage.removeItem('muthaallim_admin_token');
+    localStorage.removeItem('muthaallim_admin_user');
+    sessionStorage.removeItem('muthaallim_view_public');
+    sessionStorage.removeItem('muthaallim_analytics_cache');
     setAdminUser(null);
-    if (activeTab === 'admin' || activeTab === 'subadmin') {
-      setActiveTab('register');
-      navigate('/');
-    }
+    setActiveTab('register');
+    navigate('/');
   };
 
   const isFullLayout = activeTab === 'admin' || activeTab === 'subadmin';
@@ -220,6 +288,7 @@ export default function App() {
               adminUser={adminUser}
               onLogout={handleAdminLogout}
               onBack={() => {
+                sessionStorage.setItem('muthaallim_view_public', 'true');
                 setActiveTab('register');
                 navigate('/');
               }}
@@ -255,6 +324,7 @@ export default function App() {
               adminUser={adminUser}
               onLogout={handleAdminLogout}
               onBack={() => {
+                sessionStorage.setItem('muthaallim_view_public', 'true');
                 setActiveTab('register');
                 navigate('/');
               }}
@@ -286,12 +356,33 @@ export default function App() {
         onClose={() => {
           setLoginModalOpen(false);
           if ((activeTab === 'admin' || activeTab === 'subadmin') && !adminUser) {
+            sessionStorage.setItem('muthaallim_view_public', 'true');
             setActiveTab('register');
             navigate('/');
           }
         }}
         onLoginSuccess={handleAdminLoginSuccess}
       />
+
+      {/* Floating Shortcut to Return to Admin / Sub-Admin Dashboard if Admin is Browsing Public Website */}
+      {adminUser && !isFullLayout && (
+        <button
+          onClick={() => {
+            sessionStorage.removeItem('muthaallim_view_public');
+            if (adminUser.role === 'subadmin') {
+              setActiveTab('subadmin');
+              navigate('/subadmin');
+            } else {
+              setActiveTab('admin');
+              navigate('/admin');
+            }
+          }}
+          className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/95 hover:bg-slate-900 text-emerald-400 border border-emerald-500/30 text-xs font-semibold shadow-xl backdrop-blur cursor-pointer transition hover:scale-105 no-print"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Return to {adminUser.role === 'subadmin' ? 'Sub-Admin' : 'Admin'} Console</span>
+        </button>
+      )}
 
       {/* Footer (Public site only; Admin & Sub-Admin dashboards have integrated branding sidebars) */}
       {!isFullLayout && (

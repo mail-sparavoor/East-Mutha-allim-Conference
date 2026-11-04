@@ -4,29 +4,6 @@ import {
 } from 'lucide-react';
 import RegistrationForm from './RegistrationForm';
 
-// Samastha Centenary (100 Years) Logo Component matching Image 1
-function CentenaryLogo() {
-  return (
-    <div className="flex items-center gap-3.5 sm:gap-4 my-2 select-none">
-      <svg className="h-14 sm:h-16 w-32 sm:w-36 object-contain flex-shrink-0" viewBox="0 0 150 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Number 1 */}
-        <path d="M14 16 L26 10 L26 60 M12 60 L40 60" stroke="#ffffff" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" />
-        {/* First Circle 0 */}
-        <circle cx="64" cy="35" r="23" stroke="#ffffff" strokeWidth="5.5" />
-        {/* Second Interlocking Circle 0 */}
-        <circle cx="100" cy="35" r="23" stroke="#ffffff" strokeWidth="5.5" />
-      </svg>
-      <div className="h-12 sm:h-14 w-[1.5px] bg-white/30" />
-      <div className="text-left font-heading leading-tight">
-        <span className="block text-xs sm:text-sm font-semibold text-white tracking-wide">One</span>
-        <span className="block text-xs sm:text-sm font-semibold text-white tracking-wide">Hundred</span>
-        <span className="block text-xs sm:text-sm font-bold text-amber-400 tracking-wide">Years <span className="font-normal text-white/80">of</span></span>
-        <span className="block text-xs sm:text-sm font-semibold text-white tracking-wide">Commitment</span>
-      </div>
-    </div>
-  );
-}
-
 export default function LandingPage({ 
   onRegistrationSuccess, 
   eventSettings,
@@ -88,49 +65,13 @@ export default function LandingPage({
           {/* Two-Column Grid: Left Column = Centenary & Conference Details, Right Column = Official Poster & Register Now */}
           <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 lg:gap-14 items-center">
             
-            {/* ================= LEFT COLUMN (DESKTOP) / FIRST ON MOBILE (order-1) ================= */}
-            <div className="order-1 w-full flex flex-col gap-5 sm:gap-6 justify-center">
-              {/* Vertical accent line & Centenary Headline */}
-              <div className="flex items-start gap-3">
-                <div className="flex flex-col items-center flex-shrink-0 pt-1">
-                  <div className="w-0.5 h-10 sm:h-12 bg-amber-400/90" />
-                  <div className="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-white shadow-md shadow-white/80 -mt-0.5" />
-                </div>
-                <div className="font-heading font-black tracking-tight text-xl sm:text-3xl md:text-4xl text-white uppercase leading-snug drop-shadow-md">
-                  A <span className="text-amber-400 font-black">CENTURY</span><br />
-                  THAT <span className="text-amber-400 font-black">SHAPED</span><br />
-                  GENERATIONS
-                </div>
-              </div>
-
-              {/* Centenary 100 Logo Emblem */}
-              <CentenaryLogo />
-
-              {/* Samastha 100-Year Narrative */}
-              <p className="text-xs sm:text-base text-slate-200 leading-relaxed max-w-xl">
-                Founded in 1926, <strong className="text-amber-300 font-bold">Samastha Kerala Jam'iyyathul Ulama</strong> celebrates 100 years of transforming lives and enriching society through knowledge, service and inclusive growth.
-              </p>
-
-              {/* Mutha'allim Sammelanam Conference Details */}
-              <div className="p-3.5 sm:p-5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-slate-100 max-w-xl space-y-2 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
-                  <span className="font-heading font-extrabold text-xs sm:text-sm uppercase tracking-wider text-amber-300">
-                    മലപ്പുറം ഈസ്റ്റ് &bull; മുതഅല്ലിം സമ്മേളനം 2026
-                  </span>
-                </div>
-                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                  മലപ്പുറം ഈസ്റ്റ് ജില്ലാ മുതഅല്ലിം സമ്മേളനം! അറിവിന്റെയും പാരമ്പര്യത്തിന്റെയും വിജ്ഞാന സൗഹൃദത്തിന്റെയും സംഗമം. ആയിരക്കണക്കിന് മുതഅല്ലിംകളും ദർസ് വിദ്യാർത്ഥികളും പണ്ഡിതന്മാരും അണിനിരക്കുന്ന ചരിത്ര സംഗമം — പുളിക്കൽ (ഐക്കരപ്പടി).
-                </p>
-                <div className="pt-1 flex flex-wrap gap-2 text-[11px] sm:text-xs">
-                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                    19 നവംബർ 2026 വ്യാഴം
-                  </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                    പുളിക്കൽ (ഐക്കരപ്പടി)
-                  </span>
-                </div>
-              </div>
+            {/* ================= LEFT COLUMN: Samastha Centenary Conference Official Visual ================= */}
+            <div className="order-1 w-full flex items-center justify-center lg:justify-start">
+              <img 
+                src="/samastha-centenary-hero.png" 
+                alt="Samastha Centenary Conference" 
+                className="w-full max-w-lg lg:max-w-xl h-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)] select-none pointer-events-none"
+              />
             </div>
 
             {/* ================= RIGHT COLUMN: Official Poster Card & Actions ================= */}

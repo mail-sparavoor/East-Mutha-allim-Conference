@@ -74,10 +74,10 @@ router.post('/register', async (req, res) => {
       full_name,
       mobile,
       division_id,
+      institution_id,
       sector_id,
       unit_id,
       college,
-      custom_college,
       notes
     } = req.body;
 
@@ -100,24 +100,35 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Division selection is required' });
     }
 
-    const finalCollege = (college === 'Other' && custom_college) ? custom_college.trim() : (college || '').trim();
-    if (!finalCollege) {
-      return res.status(400).json({ error: 'Dars / Dawa College is required' });
+    // Resolve Division
+    const divRow = await db.prepare('SELECT * FROM divisions WHERE id = ?').get(division_id);
+    if (!divRow) {
+      return res.status(400).json({ error: 'Please select a valid Division' });
     }
 
-    // English text only validation for Institution / College name
-    if (!/^[a-zA-Z0-9\s.,'()&/-]+$/.test(finalCollege)) {
-      return res.status(400).json({ error: 'Dars / College name must be filled out in English text only (A-Z).' });
-    }
+    // Resolve Institution under this Division
+    let resolvedInstitutionId = null;
+    let finalCollege = (college || '').trim();
 
-    // Auto-save new Dars / College into colleges table so it is permanently visible and selectable by others
-    try {
-      const existingCollege = await db.prepare('SELECT id FROM colleges WHERE LOWER(name) = LOWER(?)').get(finalCollege);
-      if (!existingCollege) {
-        await db.prepare('INSERT IGNORE INTO colleges (name) VALUES (?)').run(finalCollege);
+    if (institution_id) {
+      const instRow = await db.prepare('SELECT * FROM institutions WHERE id = ? AND division_id = ?').get(institution_id, divRow.id);
+      if (instRow) {
+        resolvedInstitutionId = instRow.id;
+        finalCollege = instRow.name;
       }
-    } catch (cErr) {
-      console.error('Error auto-inserting new college into directory:', cErr);
+    }
+
+    if (!finalCollege && !resolvedInstitutionId) {
+      return res.status(400).json({ error: 'Please select an academic institution / Dars from the list' });
+    }
+
+    // If only college name was sent, try to look up institution under division
+    if (!resolvedInstitutionId && finalCollege) {
+      const instByName = await db.prepare('SELECT * FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(divRow.id, finalCollege);
+      if (instByName) {
+        resolvedInstitutionId = instByName.id;
+        finalCollege = instByName.name;
+      }
     }
 
     // Check if duplicate registration by same mobile number
@@ -144,12 +155,6 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Resolve division name (Sector & Unit are not required)
-    const divRow = await db.prepare('SELECT * FROM divisions WHERE id = ?').get(division_id);
-    if (!divRow) {
-      return res.status(400).json({ error: 'Please select a valid Division' });
-    }
-
     const secRow = sector_id ? await db.prepare('SELECT * FROM sectors WHERE id = ?').get(sector_id) : null;
     const unitRow = unit_id ? await db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) : null;
 
@@ -159,12 +164,12 @@ router.post('/register', async (req, res) => {
     const insertStmt = db.prepare(`
       INSERT INTO attendees (
         registration_id, full_name, mobile,
-        division_id, division_name,
+        division_id, division_name, institution_id,
         sector_id, sector_name,
         unit_id, unit_name,
         college, verification_token,
         status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Registered', ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Registered', ?)
     `);
 
     const result = await insertStmt.run(
@@ -173,6 +178,7 @@ router.post('/register', async (req, res) => {
       cleanMobile,
       divRow.id,
       divRow.name,
+      resolvedInstitutionId,
       secRow ? secRow.id : 0,
       secRow ? secRow.name : '',
       unitRow ? unitRow.id : 0,

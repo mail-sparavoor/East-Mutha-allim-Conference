@@ -34,29 +34,18 @@ export default function RegistrationForm({
     full_name: '',
     mobile: initialMobile,
     division_id: '',
-    sector_id: '',
-    unit_id: '',
+    institution_id: '',
     college: '',
-    custom_college: '',
     notes: ''
   });
 
   // Hierarchy Data
   const [divisions, setDivisions] = useState([]);
-  const [sectors, setSectors] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [colleges, setColleges] = useState([]);
-
-  // College Addition State
-  const [addingCollege, setAddingCollege] = useState(false);
-  const [newCollegeName, setNewCollegeName] = useState('');
-  const [savingNewCollege, setSavingNewCollege] = useState(false);
-  const [collegeAddedSuccess, setCollegeAddedSuccess] = useState('');
+  const [institutions, setInstitutions] = useState([]);
 
   // Dynamic Loading States
   const [loadingDivisions, setLoadingDivisions] = useState(false);
-  const [loadingSectors, setLoadingSectors] = useState(false);
-  const [loadingUnits, setLoadingUnits] = useState(false);
+  const [loadingInstitutions, setLoadingInstitutions] = useState(false);
 
   // Validation & alerts
   const [errors, setErrors] = useState({});
@@ -65,47 +54,6 @@ export default function RegistrationForm({
 
   const step2Ref = useRef(null);
   const lastCheckedKeyRef = useRef('');
-
-  // Handle adding new custom Dars or College (English text only, persists to DB)
-  const handleAddNewCollege = async () => {
-    const trimmed = newCollegeName.trim();
-    if (!trimmed) {
-      setErrors(prev => ({ ...prev, custom_college: 'Please enter institution or Dars name' }));
-      return;
-    }
-    // English text only validation
-    if (!/^[a-zA-Z0-9\s.,'()&/-]+$/.test(trimmed)) {
-      setErrors(prev => ({ ...prev, custom_college: 'Institution name must be in English text only (A-Z)' }));
-      return;
-    }
-    try {
-      setSavingNewCollege(true);
-      setErrors(prev => ({ ...prev, custom_college: null }));
-      const result = await api.createCollege({ name: trimmed });
-      const addedName = result.name || trimmed;
-
-      // Update colleges list if not present, sorted
-      setColleges(prev => {
-        if (prev.some(c => c.name.toLowerCase() === addedName.toLowerCase())) return prev;
-        return [...prev, { id: result.id || Date.now(), name: addedName }].sort((a, b) => a.name.localeCompare(b.name));
-      });
-
-      // Select the newly added institution
-      setFormData(prev => ({
-        ...prev,
-        college: addedName,
-        custom_college: ''
-      }));
-      setNewCollegeName('');
-      setAddingCollege(false);
-      setCollegeAddedSuccess(`✓ "${addedName}" added to directory and selected!`);
-      setTimeout(() => setCollegeAddedSuccess(''), 4000);
-    } catch (err) {
-      setErrors(prev => ({ ...prev, custom_college: err.message || 'Failed to add institution' }));
-    } finally {
-      setSavingNewCollege(false);
-    }
-  };
 
   // Automatic Check when Name (>=3 chars, English only) and Mobile (10 digits) are entered
   useEffect(() => {
@@ -143,7 +91,7 @@ export default function RegistrationForm({
             setStep(2);
             setStatusMessage({
               type: 'success',
-              text: '✓ Mobile verified. Please select your Division and College below.'
+              text: '✓ Mobile verified. Please select your Division and Institution below.'
             });
             setTimeout(() => {
               if (step2Ref.current) {
@@ -162,19 +110,15 @@ export default function RegistrationForm({
     }
   }, [formData.full_name, formData.mobile, step]);
 
-  // Load initial divisions and colleges
+  // Load initial divisions
   useEffect(() => {
     async function loadData() {
       try {
         setLoadingDivisions(true);
-        const [divs, clgs] = await Promise.all([
-          api.getDivisions(),
-          api.getColleges()
-        ]);
-        setDivisions(divs);
-        setColleges(clgs);
+        const divs = await api.getDivisions();
+        setDivisions(divs || []);
       } catch (err) {
-        console.error('Failed to load initial data:', err);
+        console.error('Failed to load divisions:', err);
       } finally {
         setLoadingDivisions(false);
       }
@@ -182,16 +126,45 @@ export default function RegistrationForm({
     loadData();
   }, []);
 
-  // Handle Division Selection
-  const handleDivisionChange = (e) => {
+  // Handle Division Selection & load its child institutions
+  const handleDivisionChange = async (e) => {
     const divId = e.target.value;
     setFormData(prev => ({
       ...prev,
       division_id: divId,
-      sector_id: '',
-      unit_id: ''
+      institution_id: '',
+      college: ''
     }));
     if (errors.division_id) setErrors(prev => ({ ...prev, division_id: null }));
+    if (errors.college) setErrors(prev => ({ ...prev, college: null }));
+
+    if (!divId) {
+      setInstitutions([]);
+      return;
+    }
+
+    try {
+      setLoadingInstitutions(true);
+      const insts = await api.getInstitutions(divId);
+      setInstitutions(insts || []);
+    } catch (err) {
+      console.error('Failed to load institutions for division:', err);
+      setInstitutions([]);
+    } finally {
+      setLoadingInstitutions(false);
+    }
+  };
+
+  // Handle Institution Selection under Division
+  const handleInstitutionChange = (e) => {
+    const instId = e.target.value;
+    const selected = institutions.find(i => String(i.id) === String(instId));
+    setFormData(prev => ({
+      ...prev,
+      institution_id: instId,
+      college: selected ? selected.name : ''
+    }));
+    if (errors.college) setErrors(prev => ({ ...prev, college: null }));
   };
 
   // Step 1: Validate & Check if user is already registered
@@ -229,11 +202,11 @@ export default function RegistrationForm({
         confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
         onRegistrationSuccess(result.attendee);
       } else {
-        // Not registered -> Advance to Step 2 to enter hierarchy and college
+        // Not registered -> Advance to Step 2 to enter hierarchy and institution
         setStep(2);
         setStatusMessage({
           type: 'success',
-          text: '✓ Mobile verified. Please select your Division and College below.'
+          text: '✓ Mobile verified. Please select your Division and Institution below.'
         });
         setTimeout(() => {
           if (step2Ref.current) {
@@ -255,19 +228,8 @@ export default function RegistrationForm({
 
     const errs = {};
     if (!formData.division_id) errs.division_id = 'Please select your Division';
-
-    let collegeToSubmit = formData.college;
-    if (addingCollege || formData.college === 'Other') {
-      const customVal = (newCollegeName || formData.custom_college || '').trim();
-      if (!customVal) {
-        errs.custom_college = 'Please enter your Dars / College name (English text only)';
-      } else if (!/^[a-zA-Z0-9\s.,'()&/-]+$/.test(customVal)) {
-        errs.custom_college = 'Institution name must be in English text only (A-Z)';
-      } else {
-        collegeToSubmit = customVal;
-      }
-    } else if (!formData.college) {
-      errs.college = 'Please select your Dars / Dawa College';
+    if (!formData.institution_id || !formData.college) {
+      errs.college = 'Please select your Academic Institution / Dars';
     }
 
     if (Object.keys(errs).length > 0) {
@@ -277,17 +239,8 @@ export default function RegistrationForm({
 
     setSubmitting(true);
     try {
-      // If custom institution was entered, ensure it is added to colleges directory in DB
-      if ((addingCollege || formData.college === 'Other') && collegeToSubmit) {
-        try {
-          await api.createCollege({ name: collegeToSubmit });
-        } catch (ignored) { }
-      }
-
       const response = await api.registerAttendee({
-        ...formData,
-        college: collegeToSubmit,
-        custom_college: ''
+        ...formData
       });
 
       confetti({
@@ -553,122 +506,66 @@ export default function RegistrationForm({
                 )}
               </div>
 
-              {/* Dars / Dawa College */}
+              {/* Academic Institution / Dars under selected Division */}
               <div className="pt-2 border-t border-slate-100 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-2">
                     <GraduationCap className="w-4 h-4 text-amber-500" />
                     <span>Academic Institution</span>
                   </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddingCollege(!addingCollege);
-                      setNewCollegeName('');
-                      if (errors.custom_college) setErrors(prev => ({ ...prev, custom_college: null }));
-                    }}
-                    className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 hover:underline cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{addingCollege ? 'Cancel & choose from list' : 'Not in list? Add yours'}</span>
-                  </button>
+                  {formData.division_id && (
+                    <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      {institutions.length} {institutions.length === 1 ? 'institution' : 'institutions'} in {selectedDivision?.name || 'division'}
+                    </span>
+                  )}
                 </div>
 
-                {collegeAddedSuccess && (
-                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>{collegeAddedSuccess}</span>
-                  </div>
-                )}
-
-                {!addingCollege ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
-                      <span>Dars / Dawa College <span className="text-rose-500">*</span></span>
-                      <span className="text-[10px] text-slate-400 font-normal">Select from verified directory</span>
-                    </label>
-                    <select
-                      value={formData.college}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === 'ADD_NEW') {
-                          setAddingCollege(true);
-                          setNewCollegeName('');
-                          setFormData(prev => ({ ...prev, college: '' }));
-                        } else {
-                          setFormData(prev => ({ ...prev, college: val, custom_college: '' }));
-                        }
-                        if (errors.college) setErrors(prev => ({ ...prev, college: null }));
-                      }}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-all focus:outline-none focus:ring-2 ${errors.college
-                        ? 'border-rose-300 bg-rose-50/30 focus:ring-rose-400'
-                        : 'border-slate-300 bg-slate-50/50 hover:border-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-emerald-500/20'
-                        }`}
-                    >
-                      <option value="">-- Select Institution or Dars --</option>
-                      {colleges.map((c) => (
-                        <option key={c.id || c.name} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                      <option value="ADD_NEW" className="font-bold text-emerald-700 bg-emerald-50">
-                        + Add New Dars / College (Type custom name)
-                      </option>
-                    </select>
-                    {errors.college && (
-                      <p className="mt-1 text-xs text-rose-600 font-medium">{errors.college}</p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span>Dars / Dawa College <span className="text-rose-500">*</span></span>
+                    {loadingInstitutions && <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />}
+                  </label>
+                  <select
+                    value={formData.institution_id}
+                    onChange={handleInstitutionChange}
+                    disabled={!formData.division_id || loadingInstitutions}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-all focus:outline-none focus:ring-2 ${
+                      !formData.division_id
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed font-medium'
+                        : errors.college
+                          ? 'border-rose-300 bg-rose-50/30 focus:ring-rose-400'
+                          : 'border-slate-300 bg-slate-50/50 hover:border-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-emerald-500/20'
+                    }`}
+                  >
+                    {!formData.division_id ? (
+                      <option value="">-- Please Select Division Above First --</option>
+                    ) : loadingInstitutions ? (
+                      <option value="">Loading institutions for {selectedDivision?.name || 'division'}...</option>
+                    ) : institutions.length === 0 ? (
+                      <option value="">No institutions configured for this division yet</option>
+                    ) : (
+                      <>
+                        <option value="">-- Select Academic Institution / Dars --</option>
+                        {institutions.map((inst) => (
+                          <option key={inst.id} value={inst.id}>
+                            {inst.name} {inst.code ? `(${inst.code})` : ''}
+                          </option>
+                        ))}
+                      </>
                     )}
-                  </div>
-                ) : (
-                  <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200 space-y-3 animate-fadeIn">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-emerald-950">
-                        Add New Dars / College to Directory <span className="text-rose-500">*</span>
-                      </label>
-                    </div>
-                    <p className="text-[11px] text-emerald-800/80">
-                      Type the name of your Dars or Islamic institution. Once added, it will be saved to the database and visible for other delegates to select.
+                  </select>
+                  {errors.college ? (
+                    <p className="mt-1 text-xs text-rose-600 font-medium">{errors.college}</p>
+                  ) : !formData.division_id ? (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Choose your regional division first to see institutions belonging to that division.
                     </p>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input
-                        type="text"
-                        placeholder="e.g. Busthanul Uloom Mahallu Dars, Kondotty"
-                        value={newCollegeName}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setNewCollegeName(val);
-                          if (errors.custom_college) setErrors(prev => ({ ...prev, custom_college: null }));
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddNewCollege();
-                          }
-                        }}
-                        className={`flex-1 px-3.5 py-2.5 rounded-xl border bg-white text-sm transition-all focus:outline-none focus:ring-2 ${errors.custom_college
-                          ? 'border-rose-300 focus:ring-rose-400'
-                          : 'border-emerald-300 focus:border-emerald-500 focus:ring-emerald-500/20'
-                          }`}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddNewCollege}
-                        disabled={savingNewCollege || !newCollegeName.trim()}
-                        className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                      >
-                        {savingNewCollege ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Plus className="w-4 h-4" />
-                        )}
-                        <span>Add &amp; Select</span>
-                      </button>
-                    </div>
-                    {errors.custom_college && (
-                      <p className="text-xs text-rose-600 font-medium">{errors.custom_college}</p>
-                    )}
-                  </div>
-                )}
+                  ) : institutions.length === 0 && !loadingInstitutions ? (
+                    <p className="mt-1 text-xs text-amber-600">
+                      No institutions currently listed for this division. Please contact the conference coordinator.
+                    </p>
+                  ) : null}
+                </div>
               </div>
 
               {/* Complete Registration Button */}

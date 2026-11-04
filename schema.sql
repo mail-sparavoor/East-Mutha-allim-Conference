@@ -46,7 +46,21 @@ CREATE TABLE `divisions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
--- 4. Table structure for `colleges`
+-- 4. Table structure for `institutions` (Institutions under Divisions)
+-- --------------------------------------------------------
+DROP TABLE IF EXISTS `institutions`;
+CREATE TABLE `institutions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `division_id` INT NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `code` VARCHAR(50) NULL DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_institutions_division` (`division_id`),
+  CONSTRAINT `fk_institutions_division` FOREIGN KEY (`division_id`) REFERENCES `divisions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- 4b. Table structure for `colleges` (Directory compatibility)
 -- --------------------------------------------------------
 DROP TABLE IF EXISTS `colleges`;
 CREATE TABLE `colleges` (
@@ -65,6 +79,7 @@ CREATE TABLE `attendees` (
   `mobile` VARCHAR(20) NOT NULL,
   `division_id` INT NOT NULL,
   `division_name` VARCHAR(150) NOT NULL,
+  `institution_id` INT NULL DEFAULT NULL,
   `sector_id` INT DEFAULT 0,
   `sector_name` VARCHAR(150) DEFAULT '',
   `unit_id` INT DEFAULT 0,
@@ -79,6 +94,7 @@ CREATE TABLE `attendees` (
   INDEX `idx_attendees_mobile` (`mobile`),
   INDEX `idx_attendees_reg_id` (`registration_id`),
   INDEX `idx_attendees_division` (`division_id`),
+  INDEX `idx_attendees_institution` (`institution_id`),
   INDEX `idx_attendees_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

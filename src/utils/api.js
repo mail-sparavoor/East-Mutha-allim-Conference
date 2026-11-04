@@ -80,6 +80,10 @@ export const api = {
   async getHierarchyTree() {
     return fetchApi('/hierarchy/tree');
   },
+  async getInstitutions(divisionId) {
+    const url = divisionId ? `/hierarchy/institutions?division_id=${divisionId}` : `/hierarchy/institutions`;
+    return fetchApi(url);
+  },
   async getColleges() {
     return fetchApi('/hierarchy/colleges');
   },
@@ -88,6 +92,35 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
+    });
+  },
+
+  // Institution Admin CRUD & Bulk Import
+  async createInstitution(data) {
+    return fetchApi('/hierarchy/institution', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(data)
+    });
+  },
+  async updateInstitution(id, data) {
+    return fetchApi(`/hierarchy/institution/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(data)
+    });
+  },
+  async deleteInstitution(id) {
+    return fetchApi(`/hierarchy/institution/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeader() }
+    });
+  },
+  async bulkImportInstitutions(payload) {
+    return fetchApi('/hierarchy/bulk-institutions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload)
     });
   },
 

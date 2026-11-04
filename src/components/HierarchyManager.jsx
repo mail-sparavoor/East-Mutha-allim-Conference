@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -13,7 +13,10 @@ import {
   AlertCircle, 
   Loader2,
   FileSpreadsheet,
-  Download
+  Download,
+  GraduationCap,
+  Copy,
+  Search
 } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -21,10 +24,10 @@ export default function HierarchyManager({ onHierarchyChanged }) {
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedDivisions, setExpandedDivisions] = useState({});
-  const [expandedSectors, setExpandedSectors] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Modals
-  const [modalType, setModalType] = useState(null); // 'division' | 'sector' | 'unit' | 'bulk'
+  // Modals: 'division' | 'institution' | 'bulk'
+  const [modalType, setModalType] = useState(null);
   const [modalData, setModalData] = useState({});
   const [modalError, setModalError] = useState('');
   const [modalLoading, setModalLoading] = useState(false);
@@ -32,16 +35,18 @@ export default function HierarchyManager({ onHierarchyChanged }) {
   // Bulk import state
   const [bulkText, setBulkText] = useState('');
   const [bulkStatus, setBulkStatus] = useState(null);
+  const [copiedSample, setCopiedSample] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // Fetch full hierarchy tree
+  // Fetch full hierarchy tree (Divisions with nested Institutions)
   const loadTree = async () => {
     try {
       setLoading(true);
       const data = await api.getHierarchyTree();
-      setTree(data);
-      // Expand all divisions by default for quick overview
+      setTree(data || []);
+      // Expand all divisions by default so institutions are immediately visible
       const divMap = {};
-      data.forEach(d => { divMap[d.id] = true; });
+      (data || []).forEach(d => { divMap[d.id] = true; });
       setExpandedDivisions(divMap);
     } catch (err) {
       console.error('Failed to load hierarchy tree:', err);
@@ -58,11 +63,17 @@ export default function HierarchyManager({ onHierarchyChanged }) {
     setExpandedDivisions(prev => ({ ...prev, [divId]: !prev[divId] }));
   };
 
-  const toggleSector = (secId) => {
-    setExpandedSectors(prev => ({ ...prev, [secId]: !prev[secId] }));
+  const expandAll = () => {
+    const divMap = {};
+    tree.forEach(d => { divMap[d.id] = true; });
+    setExpandedDivisions(divMap);
   };
 
-  // Add Division
+  const collapseAll = () => {
+    setExpandedDivisions({});
+  };
+
+  // Add or Edit Division
   const handleSaveDivision = async (e) => {
     e.preventDefault();
     if (!modalData.name?.trim()) return setModalError('Division name is required');
@@ -75,7 +86,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
         await api.createDivision({ name: modalData.name, code: modalData.code });
       }
       setModalType(null);
-      loadTree();
+      await loadTree();
       if (onHierarchyChanged) onHierarchyChanged();
     } catch (err) {
       setModalError(err.message || 'Error saving division');
@@ -84,47 +95,33 @@ export default function HierarchyManager({ onHierarchyChanged }) {
     }
   };
 
-  // Add Sector
-  const handleSaveSector = async (e) => {
+  // Add or Edit Institution
+  const handleSaveInstitution = async (e) => {
     e.preventDefault();
-    if (!modalData.name?.trim()) return setModalError('Sector name is required');
+    if (!modalData.name?.trim()) return setModalError('Institution name is required');
     if (!modalData.division_id) return setModalError('Parent division is required');
-    setModalLoading(true);
-    setModalError('');
-    try {
-      if (modalData.id) {
-        await api.updateSector(modalData.id, { name: modalData.name, code: modalData.code });
-      } else {
-        await api.createSector({ division_id: modalData.division_id, name: modalData.name, code: modalData.code });
-      }
-      setModalType(null);
-      loadTree();
-      if (onHierarchyChanged) onHierarchyChanged();
-    } catch (err) {
-      setModalError(err.message || 'Error saving sector');
-    } finally {
-      setModalLoading(false);
-    }
-  };
 
-  // Add Unit
-  const handleSaveUnit = async (e) => {
-    e.preventDefault();
-    if (!modalData.name?.trim()) return setModalError('Unit name is required');
-    if (!modalData.sector_id) return setModalError('Parent sector is required');
     setModalLoading(true);
     setModalError('');
     try {
       if (modalData.id) {
-        await api.updateUnit(modalData.id, { name: modalData.name, code: modalData.code });
+        await api.updateInstitution(modalData.id, {
+          division_id: modalData.division_id,
+          name: modalData.name,
+          code: modalData.code
+        });
       } else {
-        await api.createUnit({ sector_id: modalData.sector_id, name: modalData.name, code: modalData.code });
+        await api.createInstitution({
+          division_id: modalData.division_id,
+          name: modalData.name,
+          code: modalData.code
+        });
       }
       setModalType(null);
-      loadTree();
+      await loadTree();
       if (onHierarchyChanged) onHierarchyChanged();
     } catch (err) {
-      setModalError(err.message || 'Error saving unit');
+      setModalError(err.message || 'Error saving institution');
     } finally {
       setModalLoading(false);
     }
@@ -132,57 +129,58 @@ export default function HierarchyManager({ onHierarchyChanged }) {
 
   // Delete node
   const handleDeleteNode = async (type, id, name) => {
-    if (!window.confirm(`Delete ${type} "${name}"? Any sub-sectors or units under it may also be deleted.`)) return;
+    const warning = type === 'Division' 
+      ? `Delete Division "${name}"?\nAll institutions under this division will also be removed.` 
+      : `Delete Institution "${name}"?`;
+    
+    if (!window.confirm(warning)) return;
+
     try {
-      if (type === 'Division') await api.deleteDivision(id);
-      if (type === 'Sector') await api.deleteSector(id);
-      if (type === 'Unit') await api.deleteUnit(id);
-      loadTree();
+      if (type === 'Division') {
+        await api.deleteDivision(id);
+      } else if (type === 'Institution') {
+        await api.deleteInstitution(id);
+      }
+      await loadTree();
       if (onHierarchyChanged) onHierarchyChanged();
     } catch (err) {
       alert(err.message || 'Delete failed');
     }
   };
 
-  // Bulk Import
+  // Handle CSV File upload
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result;
+      if (typeof text === 'string') {
+        setBulkText(text);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Bulk Import Institutions under Divisions
   const handleBulkImport = async () => {
     if (!bulkText.trim()) {
-      setModalError('Please paste CSV or JSON data.');
+      setModalError('Please enter or paste CSV data, or select a file.');
       return;
     }
     setModalLoading(true);
     setModalError('');
     try {
-      let rows = [];
-      const trimmed = bulkText.trim();
-      if (trimmed.startsWith('[')) {
-        rows = JSON.parse(trimmed);
-      } else {
-        // Parse CSV
-        const lines = trimmed.split(/\r?\n/).filter(l => l.trim().length > 0);
-        const header = lines[0].toLowerCase();
-        const startIndex = header.includes('division') ? 1 : 0;
-        for (let i = startIndex; i < lines.length; i++) {
-          const parts = lines[i].split(',').map(p => p.trim().replace(/^"|"$/g, ''));
-          if (parts.length >= 1) {
-            rows.push({
-              division: parts[0],
-              sector: parts[1] || '',
-              unit: parts[2] || ''
-            });
-          }
-        }
-      }
-
-      const res = await api.bulkImportHierarchy(rows);
-      setBulkStatus(res.message);
+      const res = await api.bulkImportInstitutions({ text: bulkText });
+      setBulkStatus(res.message || 'Import successful!');
       setTimeout(() => {
         setModalType(null);
         setBulkStatus(null);
         setBulkText('');
         loadTree();
         if (onHierarchyChanged) onHierarchyChanged();
-      }, 1500);
+      }, 1400);
     } catch (err) {
       setModalError(err.message || 'Failed to process bulk import');
     } finally {
@@ -192,37 +190,64 @@ export default function HierarchyManager({ onHierarchyChanged }) {
 
   // Download sample CSV template
   const downloadSampleCsv = () => {
-    const csv = "Division,Sector,Unit\r\nParavoor East,Kottuvally Sector,Kaitharam\r\nParavoor East,Kottuvally Sector,Koonammavu\r\nParavoor East,Ezhikkara Sector,Chathanad\r\nAluva East,Edathala Sector,Pookkattupady\r\n";
+    const csv = "Division,Institution,Code\r\nPulikkal,Markazu Ssaqafathi Ssunniyya (Pulikkal Campus),PLK-01\r\nPulikkal,Aikkarappadi Mahallu Dars,PLK-02\r\nKondotty,EMEA Arabic College & Dars,KON-01\r\nKondotty,Kondotty Qubba Mahallu Dars,KON-02\r\nMalappuram,Ma'din Academy Malappuram,MLP-01\r\nWandoor,Wandoor Central Mahallu Dars,WND-01\r\nAreekode,Areekode Majlis Dawa College,ARK-01\r\nManjeri West,Manjeri Central Juma Masjid Dars,MJW-01\r\nManjeri East,Karakunnu Mahallu Dars,MJE-01\r\nNilambur,Nilambur Town Juma Masjid Dars,NLR-01\r\nEdavannappra,Edavannappra Mahallu Dars,EDV-01\r\nEdakkara,Edakkara Central Mahallu Dars,EDK-01\r\nKolathur,Kolathur Mahallu Dars,KLT-01\r\nPerinthalmanna,Jamia Nooriya Arabic College Pattikkad,PTM-01\r\n";
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'hierarchy_template.csv';
+    a.download = 'division_institutions_template.csv';
     a.click();
   };
 
+  const copySampleFormat = () => {
+    const sample = `Division,Institution,Code\nPulikkal,Markazu Ssaqafathi Ssunniyya,PLK-01\nPulikkal,Aikkarappadi Mahallu Dars,PLK-02\nKondotty,EMEA Arabic College & Dars,KON-01\nMalappuram,Ma'din Academy,MLP-01`;
+    navigator.clipboard.writeText(sample);
+    setCopiedSample(true);
+    setTimeout(() => setCopiedSample(false), 2000);
+  };
+
+  // Filter tree based on search
+  const filteredTree = tree.filter(div => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    const divMatch = div.name.toLowerCase().includes(term) || (div.code && div.code.toLowerCase().includes(term));
+    const instMatch = (div.institutions || []).some(i => i.name.toLowerCase().includes(term) || (i.code && i.code.toLowerCase().includes(term)));
+    return divMatch || instMatch;
+  });
+
+  const totalDivisions = tree.length;
+  const totalInstitutions = tree.reduce((acc, div) => acc + (div.institutions?.length || 0), 0);
+
   return (
     <div className="space-y-6">
-      {/* Action Header */}
+      {/* Action Header Banner */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h3 className="font-heading font-bold text-lg text-slate-900 flex items-center gap-2">
             <FolderTree className="w-5 h-5 text-emerald-600" />
-            <span>Division Management</span>
+            <span>Hierarchy Management</span>
           </h3>
-          <p className="text-xs text-slate-500">
-            Configure and manage conference regional divisions
+          <p className="text-xs text-slate-500 mt-0.5">
+            Configure regional Divisions and the Academic Institutions falling under each division.
           </p>
+          <div className="flex items-center gap-2.5 mt-2">
+            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+              {totalDivisions} Divisions
+            </span>
+            <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
+              {totalInstitutions} Institutions Configured
+            </span>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => {
               setModalType('division');
               setModalData({ name: '', code: '' });
               setModalError('');
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Division</span>
@@ -235,47 +260,74 @@ export default function HierarchyManager({ onHierarchyChanged }) {
               setModalError('');
               setBulkStatus(null);
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-sm transition"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-sm transition cursor-pointer"
           >
             <Upload className="w-4 h-4 text-emerald-600" />
-            <span>Bulk Import (CSV)</span>
+            <span>Bulk Upload (CSV)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter and Accordion controls */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search divisions or institutions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50/50"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 text-xs">
+          <button
+            onClick={expandAll}
+            className="px-2.5 py-1 text-slate-600 hover:text-slate-900 font-medium hover:bg-slate-100 rounded-lg transition"
+          >
+            Expand All
+          </button>
+          <span className="text-slate-300">|</span>
+          <button
+            onClick={collapseAll}
+            className="px-2.5 py-1 text-slate-600 hover:text-slate-900 font-medium hover:bg-slate-100 rounded-lg transition"
+          >
+            Collapse All
           </button>
         </div>
       </div>
 
       {/* Hierarchy Tree List */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 space-y-4">
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-4 sm:p-6 space-y-4">
         {loading ? (
           <div className="py-12 text-center text-slate-400">
             <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mx-auto mb-2" />
-            <span>Loading divisions...</span>
+            <span>Loading divisions &amp; institutions...</span>
           </div>
-        ) : tree.length === 0 ? (
+        ) : filteredTree.length === 0 ? (
           <div className="py-12 text-center text-slate-400">
-            No divisions configured yet. Click 'Add Division' or 'Bulk Import' above.
+            {searchTerm ? 'No divisions or institutions match your search query.' : 'No divisions configured yet. Click "Add Division" or "Bulk Upload" above.'}
           </div>
         ) : (
           <div className="space-y-3">
-            {tree.map((div) => {
-              const sectorsCount = div.sectors?.length || 0;
-              const hasSectors = sectorsCount > 0;
-              const isDivExpanded = hasSectors && !!expandedDivisions[div.id];
-              const unitsCount = div.sectors?.reduce((acc, s) => acc + (s.units?.length || 0), 0) || 0;
+            {filteredTree.map((div) => {
+              const institutionsList = div.institutions || [];
+              const instCount = institutionsList.length;
+              const isExpanded = !!expandedDivisions[div.id];
 
               return (
-                <div key={div.id} className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/40">
+                <div key={div.id} className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/40 transition">
                   {/* Division Header Row */}
-                  <div className="p-3.5 bg-slate-100/70 flex items-center justify-between border-b border-slate-200/60">
+                  <div className="p-3.5 bg-slate-100/80 flex items-center justify-between border-b border-slate-200/60 gap-2">
                     <div 
-                      onClick={() => hasSectors && toggleDivision(div.id)}
-                      className={`flex items-center gap-2 select-none flex-1 ${hasSectors ? 'cursor-pointer' : ''}`}
+                      onClick={() => toggleDivision(div.id)}
+                      className="flex items-center gap-2.5 select-none flex-1 cursor-pointer"
                     >
-                      {hasSectors && (
-                        <button className="text-slate-500 hover:text-slate-800">
-                          {isDivExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        </button>
-                      )}
-                      <Building className="w-4 h-4 text-emerald-700" />
+                      <button className="text-slate-500 hover:text-slate-800 p-0.5">
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      <Building className="w-4 h-4 text-emerald-700 flex-shrink-0" />
                       <span className="font-heading font-extrabold text-sm text-slate-900">
                         {div.name}
                       </span>
@@ -284,14 +336,26 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                           {div.code}
                         </span>
                       )}
-                      {hasSectors && (
-                        <span className="text-xs text-slate-400 font-medium">
-                          ({sectorsCount} sectors &bull; {unitsCount} units)
-                        </span>
-                      )}
+                      <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-medium ml-1">
+                        {instCount} {instCount === 1 ? 'institution' : 'institutions'}
+                      </span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                      {/* Add Institution under this Division */}
+                      <button
+                        onClick={() => {
+                          setModalType('institution');
+                          setModalData({ division_id: div.id, division_name: div.name, name: '', code: '' });
+                          setModalError('');
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        title="Add Institution under this Division"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Add Institution</span>
+                      </button>
+
                       {/* Edit Division */}
                       <button
                         onClick={() => {
@@ -299,7 +363,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                           setModalData({ id: div.id, name: div.name, code: div.code });
                           setModalError('');
                         }}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-white"
+                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-white transition cursor-pointer"
                         title="Edit Division"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -308,7 +372,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                       {/* Delete Division */}
                       <button
                         onClick={() => handleDeleteNode('Division', div.id, div.name)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition cursor-pointer"
                         title="Delete Division"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -316,93 +380,73 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                     </div>
                   </div>
 
-                  {/* Sectors under Division (only if any exist) */}
-                  {hasSectors && isDivExpanded && (
-                    <div className="p-3 pl-8 space-y-2">
-                      {div.sectors?.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic py-1">No sectors in this division yet.</p>
+                  {/* Institutions under Division */}
+                  {isExpanded && (
+                    <div className="p-3 sm:p-4 pl-6 sm:pl-10 space-y-2 bg-white/70">
+                      {instCount === 0 ? (
+                        <div className="py-3 px-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-400 flex items-center justify-between">
+                          <span>No institutions configured under {div.name} yet.</span>
+                          <button
+                            onClick={() => {
+                              setModalType('institution');
+                              setModalData({ division_id: div.id, division_name: div.name, name: '', code: '' });
+                              setModalError('');
+                            }}
+                            className="text-emerald-700 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Add one now
+                          </button>
+                        </div>
                       ) : (
-                        div.sectors.map((sec) => {
-                          const isSecExpanded = !!expandedSectors[sec.id];
-                          const unitsInSec = sec.units?.length || 0;
-
-                          return (
-                            <div key={sec.id} className="bg-white rounded-xl border border-slate-200/80 p-3 shadow-xs space-y-2">
-                              {/* Sector Header */}
-                              <div className="flex items-center justify-between">
-                                <div 
-                                  onClick={() => toggleSector(sec.id)}
-                                  className="flex items-center gap-2 cursor-pointer select-none flex-1"
-                                >
-                                  <button className="text-slate-400 hover:text-slate-700">
-                                    {isSecExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                  </button>
-                                  <span className="font-bold text-xs text-slate-800">{sec.name}</span>
-                                  <span className="text-[11px] text-slate-400 font-medium">({unitsInSec} units)</span>
-                                </div>
-
-                                <div className="flex items-center gap-1">
-                                  {/* Add Unit under this sector */}
-                                  <button
-                                    onClick={() => {
-                                      setModalType('unit');
-                                      setModalData({ sector_id: sec.id, sector_name: sec.name, name: '', code: '' });
-                                      setModalError('');
-                                    }}
-                                    className="px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition flex items-center gap-1"
-                                  >
-                                    <Plus className="w-3 h-3" /> Unit
-                                  </button>
-
-                                  <button
-                                    onClick={() => {
-                                      setModalType('sector');
-                                      setModalData({ id: sec.id, division_id: div.id, name: sec.name, code: sec.code });
-                                      setModalError('');
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-slate-700 rounded"
-                                    title="Edit Sector"
-                                  >
-                                    <Edit2 className="w-3 h-3" />
-                                  </button>
-
-                                  <button
-                                    onClick={() => handleDeleteNode('Sector', sec.id, sec.name)}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                                    title="Delete Sector"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {institutionsList.map((inst) => (
+                            <div 
+                              key={inst.id} 
+                              className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs flex items-center justify-between gap-2 hover:border-emerald-300 transition"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <GraduationCap className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                <div className="truncate">
+                                  <p className="text-xs font-semibold text-slate-800 truncate" title={inst.name}>
+                                    {inst.name}
+                                  </p>
+                                  {inst.code && (
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      Code: {inst.code}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* Units under Sector */}
-                              {isSecExpanded && (
-                                <div className="pl-6 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
-                                  {sec.units?.length === 0 ? (
-                                    <span className="text-[11px] text-slate-400 italic">No units registered</span>
-                                  ) : (
-                                    sec.units.map((unit) => (
-                                      <div 
-                                        key={unit.id}
-                                        className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 py-1 rounded-lg text-xs font-medium transition"
-                                      >
-                                        <span>{unit.name}</span>
-                                        <button
-                                          onClick={() => handleDeleteNode('Unit', unit.id, unit.name)}
-                                          className="text-slate-400 hover:text-rose-600 transition"
-                                          title="Delete Unit"
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => {
+                                    setModalType('institution');
+                                    setModalData({
+                                      id: inst.id,
+                                      division_id: div.id,
+                                      division_name: div.name,
+                                      name: inst.name,
+                                      code: inst.code
+                                    });
+                                    setModalError('');
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition cursor-pointer"
+                                  title="Edit Institution"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteNode('Institution', inst.id, inst.name)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-100 transition cursor-pointer"
+                                  title="Delete Institution"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
                             </div>
-                          );
-                        })
+                          ))}
+                        </div>
                       )}
                     </div>
                   )}
@@ -417,44 +461,47 @@ export default function HierarchyManager({ onHierarchyChanged }) {
       {modalType === 'division' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="font-heading font-bold text-base text-slate-900 mb-3">
-              {modalData.id ? 'Edit Division' : 'Add New Division'}
+            <h3 className="font-heading font-bold text-base text-slate-900 mb-3 flex items-center gap-2">
+              <Building className="w-4 h-4 text-emerald-600" />
+              <span>{modalData.id ? 'Edit Division' : 'Add New Division'}</span>
             </h3>
-            {modalError && <p className="text-xs text-rose-600 mb-3">{modalError}</p>}
+            {modalError && <p className="text-xs text-rose-600 mb-3 font-medium">{modalError}</p>}
             <form onSubmit={handleSaveDivision} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Division Name</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Division Name <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
-                  placeholder="e.g. Paravoor East"
+                  placeholder="e.g. Pulikkal"
                   value={modalData.name || ''}
                   onChange={(e) => setModalData({ ...modalData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Division Code (Optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. PVE"
+                  placeholder="e.g. PLK"
                   maxLength={5}
                   value={modalData.code || ''}
                   onChange={(e) => setModalData({ ...modalData, code: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono uppercase"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono uppercase"
                 />
               </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setModalType(null)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600"
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={modalLoading}
-                  className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
+                  className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition cursor-pointer disabled:opacity-75"
                 >
                   {modalLoading ? 'Saving...' : 'Save Division'}
                 </button>
@@ -464,92 +511,81 @@ export default function HierarchyManager({ onHierarchyChanged }) {
         </div>
       )}
 
-      {/* Sector Add/Edit Modal */}
-      {modalType === 'sector' && (
+      {/* Institution Add/Edit Modal */}
+      {modalType === 'institution' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="font-heading font-bold text-base text-slate-900 mb-1">
-              {modalData.id ? 'Edit Sector' : 'Add Sector'}
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <h3 className="font-heading font-bold text-base text-slate-900 mb-1 flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-emerald-600" />
+              <span>{modalData.id ? 'Edit Institution' : 'Add Institution'}</span>
             </h3>
-            <p className="text-xs text-slate-500 mb-3">Parent Division: <strong>{modalData.division_name || 'Selected Division'}</strong></p>
-            {modalError && <p className="text-xs text-rose-600 mb-3">{modalError}</p>}
-            <form onSubmit={handleSaveSector} className="space-y-3 text-xs">
+            <p className="text-xs text-slate-500 mb-3">
+              Assign to Division: <strong>{modalData.division_name || 'Selected Division'}</strong>
+            </p>
+            {modalError && <p className="text-xs text-rose-600 mb-3 font-medium">{modalError}</p>}
+            <form onSubmit={handleSaveInstitution} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Sector Name</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Parent Division <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={modalData.division_id || ''}
+                  onChange={(e) => {
+                    const selDiv = tree.find(d => String(d.id) === String(e.target.value));
+                    setModalData({
+                      ...modalData,
+                      division_id: e.target.value,
+                      division_name: selDiv ? selDiv.name : ''
+                    });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                >
+                  <option value="">-- Select Division --</option>
+                  {tree.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Institution / Dars Name (English only) <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
-                  placeholder="e.g. Kottuvally Sector"
+                  placeholder="e.g. Markazu Ssaqafathi Ssunniyya, Pulikkal Campus"
                   value={modalData.name || ''}
                   onChange={(e) => setModalData({ ...modalData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
               </div>
+
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Sector Code (Optional)</label>
+                <label className="block font-semibold text-slate-700 mb-1">Institution Code (Optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. KOT"
-                  maxLength={5}
+                  placeholder="e.g. PLK-01"
+                  maxLength={10}
                   value={modalData.code || ''}
                   onChange={(e) => setModalData({ ...modalData, code: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono uppercase"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono uppercase"
                 />
               </div>
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModalType(null)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={modalLoading}
-                  className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
-                >
-                  {modalLoading ? 'Saving...' : 'Save Sector'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* Unit Add/Edit Modal */}
-      {modalType === 'unit' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="font-heading font-bold text-base text-slate-900 mb-1">
-              {modalData.id ? 'Edit Unit' : 'Add Unit'}
-            </h3>
-            <p className="text-xs text-slate-500 mb-3">Parent Sector: <strong>{modalData.sector_name || 'Selected Sector'}</strong></p>
-            {modalError && <p className="text-xs text-rose-600 mb-3">{modalError}</p>}
-            <form onSubmit={handleSaveUnit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Unit Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Kaitharam"
-                  value={modalData.name || ''}
-                  onChange={(e) => setModalData({ ...modalData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setModalType(null)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600"
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={modalLoading}
-                  className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
+                  className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition cursor-pointer disabled:opacity-75"
                 >
-                  {modalLoading ? 'Saving...' : 'Save Unit'}
+                  {modalLoading ? 'Saving...' : 'Save Institution'}
                 </button>
               </div>
             </form>
@@ -560,64 +596,107 @@ export default function HierarchyManager({ onHierarchyChanged }) {
       {/* Bulk Import Modal */}
       {modalType === 'bulk' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-heading font-bold text-base text-slate-900 flex items-center gap-1.5">
                 <Upload className="w-4 h-4 text-emerald-600" />
-                <span>Bulk Upload Organizational Hierarchy</span>
+                <span>Bulk Upload Divisions &amp; Institutions</span>
               </h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600">
+              <button 
+                onClick={() => setModalType(null)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="mt-3 text-xs text-slate-500 space-y-2">
+            <div className="mt-3 text-xs text-slate-600 space-y-2">
               <p>
-                Paste CSV data (one entry per line formatted as <code>Division, Sector, Unit</code>) or JSON array:
+                Upload a <strong>.CSV</strong> or text file, or paste your list below formatted as:
+                <br />
+                <code className="bg-slate-100 px-2 py-0.5 rounded text-[11px] font-mono text-emerald-800">
+                  Division, Institution, Code(optional)
+                </code>
               </p>
-              <button
-                type="button"
-                onClick={downloadSampleCsv}
-                className="inline-flex items-center gap-1 text-emerald-700 font-semibold hover:underline"
-              >
-                <Download className="w-3.5 h-3.5" /> Download Sample CSV Template
-              </button>
+              
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={downloadSampleCsv}
+                  className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download CSV Template
+                </button>
+
+                <button
+                  type="button"
+                  onClick={copySampleFormat}
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-semibold bg-slate-100 px-2.5 py-1 rounded-lg hover:bg-slate-200 transition cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" /> {copiedSample ? 'Copied to Clipboard!' : 'Copy Sample Format'}
+                </button>
+
+                <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-semibold bg-slate-100 px-2.5 py-1 rounded-lg hover:bg-slate-200 transition cursor-pointer">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Choose File (.csv, .txt)</span>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".csv,.txt"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
 
             {modalError && (
-              <div className="mt-2 p-2.5 rounded-xl bg-rose-50 text-rose-800 text-xs">{modalError}</div>
+              <div className="mt-3 p-2.5 rounded-xl bg-rose-50 text-rose-800 text-xs font-medium border border-rose-200">
+                {modalError}
+              </div>
             )}
             {bulkStatus && (
-              <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-semibold">{bulkStatus}</div>
+              <div className="mt-3 p-2.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{bulkStatus}</span>
+              </div>
             )}
 
             <div className="mt-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                CSV Data (Paste or edit below):
+              </label>
               <textarea
-                rows={8}
-                placeholder="Paravoor East, Kottuvally Sector, Kaitharam&#10;Paravoor East, Kottuvally Sector, Koonammavu&#10;Paravoor East, Ezhikkara Sector, Chathanad"
+                rows={9}
+                placeholder="Pulikkal, Markazu Ssaqafathi Ssunniyya, PLK-01&#10;Pulikkal, Aikkarappadi Mahallu Dars, PLK-02&#10;Kondotty, EMEA Arabic College & Dars, KON-01&#10;Malappuram, Ma'din Academy, MLP-01"
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
-                className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50/50"
               />
             </div>
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setModalType(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkImport}
-                disabled={modalLoading}
-                className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-700 transition flex items-center gap-1.5 disabled:opacity-75"
-              >
-                {modalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                <span>Import Hierarchy Data</span>
-              </button>
+            <div className="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-[11px] text-slate-400">
+                Divisions not yet created will be automatically created.
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkImport}
+                  disabled={modalLoading || !bulkText.trim()}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-700 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-600/20"
+                >
+                  {modalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  <span>Import Records</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

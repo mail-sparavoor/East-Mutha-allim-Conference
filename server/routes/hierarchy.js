@@ -44,10 +44,16 @@ router.get('/units', async (req, res) => {
   }
 });
 
-// GET full nested hierarchy tree
+// GET full nested hierarchy tree (Divisions with child Institutions)
 router.get('/tree', async (req, res) => {
   try {
     const divisions = await db.prepare('SELECT * FROM divisions ORDER BY name ASC').all();
+    let institutions = [];
+    try {
+      institutions = await db.prepare('SELECT * FROM institutions ORDER BY name ASC').all();
+    } catch (e) {
+      institutions = [];
+    }
     let sectors = [];
     let units = [];
     try {
@@ -59,6 +65,7 @@ router.get('/tree', async (req, res) => {
     }
 
     const tree = divisions.map(div => {
+      const divInstitutions = (institutions || []).filter(i => i.division_id === div.id);
       const divSectors = (sectors || []).filter(s => s.division_id === div.id).map(sec => {
         const secUnits = (units || []).filter(u => u.sector_id === sec.id);
         return {
@@ -68,11 +75,32 @@ router.get('/tree', async (req, res) => {
       });
       return {
         ...div,
+        institutions: divInstitutions,
         sectors: divSectors
       };
     });
 
     res.json(tree);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET institutions (with optional ?division_id filter)
+router.get('/institutions', async (req, res) => {
+  try {
+    const { division_id } = req.query;
+    if (division_id) {
+      const list = await db.prepare('SELECT * FROM institutions WHERE division_id = ? ORDER BY name ASC').all(division_id);
+      return res.json(list);
+    }
+    const all = await db.prepare(`
+      SELECT i.*, d.name as division_name 
+      FROM institutions i 
+      JOIN divisions d ON i.division_id = d.id 
+      ORDER BY d.name ASC, i.name ASC
+    `).all();
+    res.json(all);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -219,6 +247,157 @@ router.delete('/unit/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     await db.prepare('DELETE FROM units WHERE id = ?').run(id);
     res.json({ success: true, message: 'Unit deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Institution Admin Routes:
+router.post('/institution', requireAdmin, async (req, res) => {
+  try {
+    const { division_id, name, code } = req.body;
+    if (!division_id) {
+      return res.status(400).json({ error: 'Division selection is required' });
+    }
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Institution name is required' });
+    }
+    const cleanName = name.trim();
+    if (!/^[a-zA-Z0-9\s.,'()&/-]+$/.test(cleanName)) {
+      return res.status(400).json({ error: 'Institution name must be in English text only (A-Z)' });
+    }
+
+    // Check duplicate under same division
+    const existing = await db.prepare('SELECT * FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(division_id, cleanName);
+    if (existing) {
+      return res.status(400).json({ error: 'This institution already exists under the selected division' });
+    }
+
+    const cleanCode = (code || '').trim().toUpperCase();
+    const result = await db.prepare('INSERT INTO institutions (division_id, name, code) VALUES (?, ?, ?)').run(division_id, cleanName, cleanCode || null);
+
+    // Keep legacy colleges table in sync
+    try {
+      await db.prepare('INSERT IGNORE INTO colleges (name) VALUES (?)').run(cleanName);
+    } catch (_) {}
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      division_id,
+      name: cleanName,
+      code: cleanCode,
+      success: true
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/institution/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { division_id, name, code } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Institution name is required' });
+    }
+    const cleanName = name.trim();
+    if (!/^[a-zA-Z0-9\s.,'()&/-]+$/.test(cleanName)) {
+      return res.status(400).json({ error: 'Institution name must be in English text only (A-Z)' });
+    }
+    const cleanCode = (code || '').trim().toUpperCase();
+
+    if (division_id) {
+      await db.prepare('UPDATE institutions SET division_id = ?, name = ?, code = ? WHERE id = ?').run(division_id, cleanName, cleanCode || null, id);
+    } else {
+      await db.prepare('UPDATE institutions SET name = ?, code = ? WHERE id = ?').run(cleanName, cleanCode || null, id);
+    }
+
+    res.json({ success: true, message: 'Institution updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/institution/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.prepare('DELETE FROM institutions WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Institution deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk import institutions under divisions (supports CSV text or array of { division, institution, code })
+router.post('/bulk-institutions', requireAdmin, async (req, res) => {
+  try {
+    const { rows, text } = req.body;
+    let itemsToProcess = [];
+
+    if (Array.isArray(rows) && rows.length > 0) {
+      itemsToProcess = rows;
+    } else if (text && typeof text === 'string') {
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+      const startIndex = lines[0].toLowerCase().includes('division') ? 1 : 0;
+      for (let i = startIndex; i < lines.length; i++) {
+        const parts = lines[i].split(',').map(p => p.trim().replace(/^["']|["']$/g, ''));
+        if (parts.length >= 2) {
+          itemsToProcess.push({
+            division: parts[0],
+            institution: parts[1],
+            code: parts[2] || ''
+          });
+        }
+      }
+    }
+
+    if (itemsToProcess.length === 0) {
+      return res.status(400).json({ error: 'No valid rows provided. Required format: Division, Institution' });
+    }
+
+    let addedInstitutions = 0;
+    let createdDivisions = 0;
+    let skipped = 0;
+
+    for (const item of itemsToProcess) {
+      const divName = (item.division || item.Division || '').trim();
+      const instName = (item.institution || item.Institution || item.name || item.Name || '').trim();
+      const code = (item.code || item.Code || '').trim();
+
+      if (!divName || !instName) {
+        skipped++;
+        continue;
+      }
+
+      // Check or create division
+      let div = await db.prepare('SELECT id FROM divisions WHERE LOWER(name) = LOWER(?)').get(divName);
+      if (!div) {
+        const divRes = await db.prepare('INSERT INTO divisions (name, code) VALUES (?, ?)').run(divName, divName.substring(0, 3).toUpperCase());
+        div = { id: divRes.lastInsertRowid };
+        createdDivisions++;
+      }
+
+      // Check if institution already exists under this division
+      const existingInst = await db.prepare('SELECT id FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(div.id, instName);
+      if (!existingInst) {
+        await db.prepare('INSERT INTO institutions (division_id, name, code) VALUES (?, ?, ?)').run(div.id, instName, code || null);
+        addedInstitutions++;
+        // Keep colleges table synchronized
+        try {
+          await db.prepare('INSERT IGNORE INTO colleges (name) VALUES (?)').run(instName);
+        } catch (_) {}
+      } else {
+        skipped++;
+      }
+    }
+
+    res.json({
+      success: true,
+      addedInstitutions,
+      createdDivisions,
+      skipped,
+      message: `Bulk import completed: ${addedInstitutions} institutions added across ${createdDivisions} new and existing divisions.`
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -197,7 +197,111 @@ export async function initializeSeedData() {
       }
     }
 
-    // 4. Colleges check
+    // 4. Institutions under Divisions
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS institutions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        division_id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        code VARCHAR(50) NULL DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_institutions_division (division_id),
+        CONSTRAINT fk_institutions_division FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Ensure attendees table has institution_id column
+    try {
+      const attendeeCols = await db.prepare('DESCRIBE attendees').all();
+      if (Array.isArray(attendeeCols) && !attendeeCols.some(c => c.Field === 'institution_id')) {
+        await pool.query('ALTER TABLE attendees ADD COLUMN institution_id INT NULL DEFAULT NULL AFTER division_name');
+      }
+    } catch (e) {
+      // Ignore if column check fails or already present
+    }
+
+    // Seed default institutions if empty
+    const instCount = await db.prepare('SELECT COUNT(*) as count FROM institutions').get();
+    if (!instCount || instCount.count === 0) {
+      const divs = await db.prepare('SELECT id, name FROM divisions ORDER BY id').all();
+      const defaultDivInstitutions = {
+        'Pulikkal': [
+          'Markazu Ssaqafathi Ssunniyya, Pulikkal Campus',
+          'Aikkarappadi Mahallu Dars',
+          'Darul Uloom Arabic College, Pulikkal',
+          'Busthanabad Islamic Academy'
+        ],
+        'Kondotty': [
+          'EMEA Arabic College & Dars, Kondotty',
+          'Kondotty Qubba Mahallu Dars',
+          'Markaz Garden Dawa College, Kondotty Chapter',
+          'Darul Huda Islamic Centre, Kondotty'
+        ],
+        'Malappuram': [
+          "Ma'din Academy, Malappuram",
+          "Jamia Ma'din Kulliyya of Islamic Studies",
+          'Malappuram Valiyangadi Juma Masjid Dars',
+          'Inamdar Islamic Academy, Malappuram'
+        ],
+        'Wandoor': [
+          'Wandoor Central Mahallu Dars',
+          'Jamia Nooriya Sub-Centre, Wandoor',
+          'Darul Hasanath Islamic Complex, Kannath'
+        ],
+        'Areekode': [
+          'Areekode Majlis Dawa College',
+          'Uluwwul Himma Arabic Dars, Areekode',
+          'Therattammal Mahallu Dars'
+        ],
+        'Manjeri West': [
+          'Manjeri Central Juma Masjid Dars',
+          'Hidayathul Muslimeen Dawa Academy',
+          'Jamia Madeenathunnoor Branch, Manjeri'
+        ],
+        'Manjeri East': [
+          'Karakunnu Mahallu Dars',
+          'Pannippara Islamic Dars Complex',
+          'Sirajul Huda Manjeri East Chapter'
+        ],
+        'Nilambur': [
+          'Nilambur Town Juma Masjid Dars',
+          'Chungathara Islamic Academy',
+          'Wandoor-Nilambur Dawa College'
+        ],
+        'Edavannappra': [
+          'Edavannappra Mahallu Dars',
+          'Rashidiyya Arabic College',
+          'Vazhakkad Darul Uloom Associated Dars'
+        ],
+        'Edakkara': [
+          'Edakkara Central Mahallu Dars',
+          'Vazhikkadavu Islamic Centre Dars',
+          'Pothukal Dawa Academy'
+        ],
+        'Kolathur': [
+          'Kolathur Mahallu Dars',
+          'Darunnoor Dawa College, Kolathur',
+          'Kadungapuram Islamic Institute'
+        ],
+        'Perinthalmanna': [
+          'Jamia Nooriya Arabic College, Pattikkad',
+          'Perinthalmanna Town Mahallu Dars',
+          'Darul Falah Islamic Academy, Poopalam'
+        ]
+      };
+
+      for (const div of divs) {
+        const insts = defaultDivInstitutions[div.name] || [
+          `${div.name} Central Mahallu Dars`,
+          `${div.name} Islamic Academy`
+        ];
+        for (const name of insts) {
+          await db.prepare('INSERT INTO institutions (division_id, name) VALUES (?, ?)').run(div.id, name);
+        }
+      }
+    }
+
+    // 5. Colleges check
     const collegeCount = await db.prepare('SELECT COUNT(*) as count FROM colleges').get();
     if (!collegeCount || collegeCount.count === 0) {
       const defaultColleges = [

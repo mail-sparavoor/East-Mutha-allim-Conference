@@ -5,201 +5,202 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// Resilient API request wrapper: handles JSON, HTML error fallbacks, and connection drops
+async function fetchApi(endpoint, options = {}) {
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+  let res;
+
+  try {
+    res = await fetch(url, options);
+  } catch (netErr) {
+    throw new Error('Network error: Unable to reach conference server. Please ensure the backend is running.');
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  let data = null;
+
+  if (contentType.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch (e) {
+      data = null;
+    }
+  } else {
+    // Non-JSON response (e.g. 404 HTML, 500 HTML error page from proxy or unrouted server)
+    const rawText = await res.text();
+    let cleanMessage = '';
+
+    // Extract title or heading if available
+    const titleMatch = rawText.match(/<title>(.*?)<\/title>/i);
+    const h1Match = rawText.match(/<h1>(.*?)<\/h1>/i);
+    cleanMessage = (titleMatch && titleMatch[1]) || (h1Match && h1Match[1]) || '';
+
+    if (!cleanMessage && rawText.length < 120 && rawText.trim()) {
+      cleanMessage = rawText.trim();
+    }
+    if (!cleanMessage) {
+      cleanMessage = `Server returned HTTP ${res.status} (${res.statusText || 'Error'})`;
+    }
+    throw new Error(cleanMessage);
+  }
+
+  if (!res.ok) {
+    const errorMsg = data?.error || data?.message || `Request failed with status ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return data;
+}
+
 export const api = {
   // Settings
   async getSettings() {
-    const res = await fetch(`${API_BASE}/settings`);
-    if (!res.ok) throw new Error('Failed to fetch settings');
-    return res.json();
+    return fetchApi('/settings');
   },
   async updateSettings(data) {
-    const res = await fetch(`${API_BASE}/settings`, {
+    return fetchApi('/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update settings');
-    return res.json();
   },
 
   // Hierarchy
   async getDivisions() {
-    const res = await fetch(`${API_BASE}/hierarchy/divisions`);
-    if (!res.ok) throw new Error('Failed to fetch divisions');
-    return res.json();
+    return fetchApi('/hierarchy/divisions');
   },
   async getSectors(divisionId) {
-    const url = divisionId ? `${API_BASE}/hierarchy/sectors?division_id=${divisionId}` : `${API_BASE}/hierarchy/sectors`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch sectors');
-    return res.json();
+    const url = divisionId ? `/hierarchy/sectors?division_id=${divisionId}` : `/hierarchy/sectors`;
+    return fetchApi(url);
   },
   async getUnits(sectorId) {
-    const url = sectorId ? `${API_BASE}/hierarchy/units?sector_id=${sectorId}` : `${API_BASE}/hierarchy/units`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch units');
-    return res.json();
+    const url = sectorId ? `/hierarchy/units?sector_id=${sectorId}` : `/hierarchy/units`;
+    return fetchApi(url);
   },
   async getHierarchyTree() {
-    const res = await fetch(`${API_BASE}/hierarchy/tree`);
-    if (!res.ok) throw new Error('Failed to fetch hierarchy tree');
-    return res.json();
+    return fetchApi('/hierarchy/tree');
   },
   async getColleges() {
-    const res = await fetch(`${API_BASE}/hierarchy/colleges`);
-    if (!res.ok) throw new Error('Failed to fetch colleges');
-    return res.json();
+    return fetchApi('/hierarchy/colleges');
   },
   async createCollege(data) {
-    const res = await fetch(`${API_BASE}/hierarchy/college`, {
+    return fetchApi('/hierarchy/college', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to add institution');
-    return res.json();
   },
 
   // Hierarchy Admin CRUD
   async createDivision(data) {
-    const res = await fetch(`${API_BASE}/hierarchy/division`, {
+    return fetchApi('/hierarchy/division', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to create division');
-    return res.json();
   },
   async updateDivision(id, data) {
-    const res = await fetch(`${API_BASE}/hierarchy/division/${id}`, {
+    return fetchApi(`/hierarchy/division/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update division');
-    return res.json();
   },
   async deleteDivision(id) {
-    const res = await fetch(`${API_BASE}/hierarchy/division/${id}`, {
+    return fetchApi(`/hierarchy/division/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete division');
-    return res.json();
   },
   async createSector(data) {
-    const res = await fetch(`${API_BASE}/hierarchy/sector`, {
+    return fetchApi('/hierarchy/sector', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to create sector');
-    return res.json();
   },
   async updateSector(id, data) {
-    const res = await fetch(`${API_BASE}/hierarchy/sector/${id}`, {
+    return fetchApi(`/hierarchy/sector/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update sector');
-    return res.json();
   },
   async deleteSector(id) {
-    const res = await fetch(`${API_BASE}/hierarchy/sector/${id}`, {
+    return fetchApi(`/hierarchy/sector/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete sector');
-    return res.json();
   },
   async createUnit(data) {
-    const res = await fetch(`${API_BASE}/hierarchy/unit`, {
+    return fetchApi('/hierarchy/unit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to create unit');
-    return res.json();
   },
   async updateUnit(id, data) {
-    const res = await fetch(`${API_BASE}/hierarchy/unit/${id}`, {
+    return fetchApi(`/hierarchy/unit/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update unit');
-    return res.json();
   },
   async deleteUnit(id) {
-    const res = await fetch(`${API_BASE}/hierarchy/unit/${id}`, {
+    return fetchApi(`/hierarchy/unit/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete unit');
-    return res.json();
   },
   async bulkImportHierarchy(rows) {
-    const res = await fetch(`${API_BASE}/hierarchy/bulk-import`, {
+    return fetchApi('/hierarchy/bulk-import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify({ rows })
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to import hierarchy');
-    return res.json();
   },
 
   // Attendees
   async checkAttendee(mobile, full_name) {
-    const res = await fetch(`${API_BASE}/attendees/check`, {
+    return fetchApi('/attendees/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mobile, full_name })
     });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Check failed');
-    return result;
   },
   async registerAttendee(data) {
-    const res = await fetch(`${API_BASE}/attendees/register`, {
+    return fetchApi('/attendees/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Registration failed');
-    return result;
   },
   async getTicket(identifier) {
-    const res = await fetch(`${API_BASE}/attendees/ticket/${encodeURIComponent(identifier)}`);
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Ticket not found');
-    return result.attendee;
+    const res = await fetchApi(`/attendees/ticket/${encodeURIComponent(identifier)}`);
+    return res.attendee;
+  },
+  async lookupTicket(identifier) {
+    const res = await fetchApi(`/attendees/lookup/${encodeURIComponent(identifier)}`);
+    return res.attendee;
   },
   async getAttendees(params = {}) {
     const qs = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_BASE}/attendees?${qs}`, {
+    return fetchApi(`/attendees?${qs}`, {
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error('Failed to fetch attendees');
-    return res.json();
   },
   async updateAttendee(id, data) {
-    const res = await fetch(`${API_BASE}/attendees/${id}`, {
+    return fetchApi(`/attendees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update attendee');
-    return res.json();
   },
   async deleteAttendee(id) {
-    const res = await fetch(`${API_BASE}/attendees/${id}`, {
+    return fetchApi(`/attendees/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete attendee');
-    return res.json();
   },
   getExportUrl(params = {}) {
     const qs = new URLSearchParams(params).toString();
@@ -208,52 +209,39 @@ export const api = {
 
   // Check-in Scanner
   async scanCheckIn(qrData, verifier) {
-    const res = await fetch(`${API_BASE}/checkin/scan`, {
+    return fetchApi('/checkin/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ qrData, verifier })
     });
-    return res.json();
   },
   async manualCheckIn(attendeeId, action = 'admit', verifier) {
-    const res = await fetch(`${API_BASE}/checkin/manual`, {
+    return fetchApi('/checkin/manual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ attendee_id: attendeeId, action, verifier })
     });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Manual check-in failed');
-    return result;
   },
   async getRecentCheckIns() {
-    const res = await fetch(`${API_BASE}/checkin/recent`);
-    if (!res.ok) throw new Error('Failed to fetch recent check-ins');
-    return res.json();
+    return fetchApi('/checkin/recent');
   },
 
   // Admin
   async adminLogin(username, password) {
-    const res = await fetch(`${API_BASE}/admin/login`, {
+    return fetchApi('/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Login failed');
-    return result;
   },
   async getAdminMe() {
-    const res = await fetch(`${API_BASE}/admin/me`, {
+    return fetchApi('/admin/me', {
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error('Failed to verify admin');
-    return res.json();
   },
   async getAnalytics() {
-    const res = await fetch(`${API_BASE}/admin/analytics`, {
+    return fetchApi('/admin/analytics', {
       headers: { ...getAuthHeader() }
     });
-    if (!res.ok) throw new Error('Failed to load analytics');
-    return res.json();
   }
 };

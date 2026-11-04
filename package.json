@@ -13,6 +13,7 @@
     "bcryptjs": "^2.4.3",
     "canvas-confetti": "^1.9.4",
     "cors": "^2.8.5",
+    "dotenv": "^18.0.9",
     "express": "^4.21.2",
     "html5-qrcode": "^2.3.8",
     "jsonwebtoken": "^9.0.2",

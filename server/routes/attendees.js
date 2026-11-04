@@ -214,38 +214,100 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// GET /api/attendees/ticket/:identifier (lookup by registration_id or token)
+// Helper function for Ticket / Pass lookup by Registration ID, Verification Token, or Mobile
+async function handleTicketLookup(identifier, req, res) {
+  if (!identifier || !String(identifier).trim()) {
+    return res.status(400).json({ error: 'Mobile number or Registration ID is required' });
+  }
+
+  const clean = String(identifier).trim();
+  const cleanMobile = clean.replace(/\D/g, '');
+
+  let attendee = null;
+  // 1. Match exact registration_id or verification_token
+  attendee = await db.prepare(`
+    SELECT * FROM attendees 
+    WHERE registration_id = ? OR verification_token = ?
+  `).get(clean, clean);
+
+  // 2. If not found and mobile is at least 10 digits, search by mobile
+  if (!attendee && cleanMobile.length >= 10) {
+    attendee = await db.prepare(`
+      SELECT * FROM attendees 
+      WHERE mobile = ? OR mobile LIKE ?
+    `).get(cleanMobile, `%${cleanMobile.slice(-10)}`);
+  }
+
+  // 3. Fallback search by raw input
+  if (!attendee) {
+    attendee = await db.prepare(`
+      SELECT * FROM attendees 
+      WHERE mobile = ?
+    `).get(clean);
+  }
+
+  if (!attendee) {
+    return res.status(404).json({ error: 'No attendee ticket found matching this identifier' });
+  }
+
+  const qrPayload = JSON.stringify({
+    regId: attendee.registration_id,
+    name: attendee.full_name,
+    token: attendee.verification_token
+  });
+
+  const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+    width: 350,
+    margin: 2,
+    color: { dark: '#064e3b', light: '#ffffff' }
+  });
+
+  return res.json({
+    attendee: {
+      ...attendee,
+      qrCode: qrDataUrl
+    }
+  });
+}
+
+// GET /api/attendees/ticket/:identifier (lookup by registration_id, token, or mobile)
 router.get('/ticket/:identifier', async (req, res) => {
   try {
-    const { identifier } = req.params;
-    const attendee = await db.prepare(`
-      SELECT * FROM attendees 
-      WHERE registration_id = ? OR verification_token = ? OR mobile = ?
-    `).get(identifier, identifier, identifier);
-
-    if (!attendee) {
-      return res.status(404).json({ error: 'Ticket not found' });
-    }
-
-    const qrPayload = JSON.stringify({
-      regId: attendee.registration_id,
-      name: attendee.full_name,
-      token: attendee.verification_token
-    });
-
-    const qrDataUrl = await QRCode.toDataURL(qrPayload, {
-      width: 350,
-      margin: 2,
-      color: { dark: '#064e3b', light: '#ffffff' }
-    });
-
-    res.json({
-      attendee: {
-        ...attendee,
-        qrCode: qrDataUrl
-      }
-    });
+    await handleTicketLookup(req.params.identifier, req, res);
   } catch (err) {
+    console.error('Ticket lookup error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/attendees/lookup/:identifier
+router.get('/lookup/:identifier', async (req, res) => {
+  try {
+    await handleTicketLookup(req.params.identifier, req, res);
+  } catch (err) {
+    console.error('Lookup identifier error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/attendees/lookup
+router.get('/lookup', async (req, res) => {
+  try {
+    const id = req.query.query || req.query.identifier || req.query.mobile || req.query.registration_id;
+    await handleTicketLookup(id, req, res);
+  } catch (err) {
+    console.error('Lookup query error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/attendees/lookup
+router.post('/lookup', async (req, res) => {
+  try {
+    const id = req.body.query || req.body.identifier || req.body.mobile || req.body.registration_id;
+    await handleTicketLookup(id, req, res);
+  } catch (err) {
+    console.error('Lookup post error:', err);
     res.status(500).json({ error: err.message });
   }
 });

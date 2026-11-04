@@ -1,69 +1,123 @@
 import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootEnvPath = path.resolve(__dirname, '../.env');
+
+// Ensure .env is loaded
+if (fs.existsSync(rootEnvPath)) {
+  dotenv.config({ path: rootEnvPath });
+} else {
+  dotenv.config();
+}
 
 const MYSQL_URI = process.env.DATABASE_URL || '';
 
 if (!MYSQL_URI) {
-  console.warn('Warning: DATABASE_URL is not set in environment variables.');
+  console.warn('⚠️ Warning: DATABASE_URL is not set in environment variables. Check .env file.');
 }
 
 // Clean URI by stripping ?ssl-mode=REQUIRED to avoid mysql2 configuration warning
 const cleanUri = MYSQL_URI ? MYSQL_URI.split('?')[0] : '';
 
+// Create resilient connection pool to Aiven Cloud MySQL with SSL
 export const pool = mysql.createPool({
-  uri: cleanUri,
+  uri: cleanUri || 'mysql://localhost:3306/muthaallim_conference',
   waitForConnections: true,
   connectionLimit: 15,
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
+  connectTimeout: 20000,
   ssl: {
     rejectUnauthorized: false
   }
+});
+
+// Reconnect/error listener
+pool.on('connection', (conn) => {
+  conn.on('error', (err) => {
+    console.error('MySQL Connection error on pool:', err.code || err.message);
+  });
 });
 
 export const db = {
   pool,
 
   async query(sql, params = []) {
-    const flatParams = Array.isArray(params) ? params.flat() : [params];
-    const [rows] = await pool.query(sql, flatParams);
-    return rows;
+    try {
+      const flatParams = Array.isArray(params) ? params.flat() : [params];
+      const [rows] = await pool.query(sql, flatParams);
+      return rows;
+    } catch (err) {
+      console.error('Database query error:', err.message, '\nSQL:', sql);
+      throw err;
+    }
   },
 
   prepare(sql) {
     return {
       async get(...params) {
-        const flatParams = params.flat();
-        const [rows] = await pool.query(sql, flatParams);
-        return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+        try {
+          const flatParams = params.flat();
+          const [rows] = await pool.query(sql, flatParams);
+          return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+        } catch (err) {
+          console.error('Database prepare.get error:', err.message, '\nSQL:', sql);
+          throw err;
+        }
       },
       async all(...params) {
-        const flatParams = params.flat();
-        const [rows] = await pool.query(sql, flatParams);
-        return Array.isArray(rows) ? rows : [];
+        try {
+          const flatParams = params.flat();
+          const [rows] = await pool.query(sql, flatParams);
+          return Array.isArray(rows) ? rows : [];
+        } catch (err) {
+          console.error('Database prepare.all error:', err.message, '\nSQL:', sql);
+          throw err;
+        }
       },
       async run(...params) {
-        const flatParams = params.flat();
-        const [result] = await pool.query(sql, flatParams);
-        return {
-          lastInsertRowid: result.insertId,
-          insertId: result.insertId,
-          changes: result.affectedRows,
-          affectedRows: result.affectedRows
-        };
+        try {
+          const flatParams = params.flat();
+          const [result] = await pool.query(sql, flatParams);
+          return {
+            lastInsertRowid: result.insertId,
+            insertId: result.insertId,
+            changes: result.affectedRows,
+            affectedRows: result.affectedRows
+          };
+        } catch (err) {
+          console.error('Database prepare.run error:', err.message, '\nSQL:', sql);
+          throw err;
+        }
       }
     };
   },
 
   async exec(sql) {
-    const [result] = await pool.query(sql);
-    return result;
+    try {
+      const [result] = await pool.query(sql);
+      return result;
+    } catch (err) {
+      console.error('Database exec error:', err.message);
+      throw err;
+    }
   }
 };
 
 // Function to initialize tables and initial data in MySQL
 export async function initializeSeedData() {
   try {
+    if (!cleanUri) {
+      console.warn('⚠️ No DATABASE_URL configured; skipping DB initialization.');
+      return;
+    }
+
     // 0. Ensure sectors and units tables exist to prevent missing table errors
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sectors (
@@ -154,8 +208,8 @@ export async function initializeSeedData() {
       }
     }
 
-    console.log('Connected to Aiven MySQL & verified schema successfully!');
+    console.log('✅ Connected to Aiven MySQL & verified schema successfully!');
   } catch (err) {
-    console.error('Error during MySQL seed initialization:', err);
+    console.error('❌ Error during MySQL seed initialization:', err.message);
   }
 }

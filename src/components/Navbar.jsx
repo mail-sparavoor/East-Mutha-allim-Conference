@@ -27,11 +27,15 @@ export default function Navbar({
     { id: 'register', label: 'Home / Register', icon: Compass },
     { id: 'ticket-lookup', label: 'Find Ticket', icon: Search },
     { id: 'checkin', label: 'Gate Scanner', icon: QrCode, badge: 'Venue' },
-    { id: 'admin', label: 'Admin Dashboard', icon: ShieldCheck, adminOnly: true }
+    { id: 'admin', label: 'Admin Dashboard', icon: ShieldCheck }
   ];
 
   const handleNavClick = (id) => {
-    setActiveTab(id);
+    if (id === 'admin' && !adminUser) {
+      onOpenLogin?.();
+    } else {
+      setActiveTab(id);
+    }
     setMobileMenuOpen(false);
   };
 

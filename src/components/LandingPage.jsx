@@ -61,21 +61,21 @@ export default function LandingPage({
         <div className="absolute -top-32 -left-32 w-72 sm:w-96 h-72 sm:h-96 rounded-full bg-amber-500/20 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-32 -right-32 w-72 sm:w-96 h-72 sm:h-96 rounded-full bg-rose-600/20 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 max-w-6xl mx-auto">
+        <div className="relative z-10 max-w-6xl xl:max-w-7xl mx-auto">
           {/* Two-Column Grid: Left Column = Centenary & Conference Details, Right Column = Official Poster & Register Now */}
-          <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 lg:gap-14 items-center">
+          <div className="flex flex-col lg:flex-row gap-8 lg:gap-10 xl:gap-14 items-center justify-between">
             
             {/* ================= LEFT COLUMN: Samastha Centenary Conference Official Visual ================= */}
-            <div className="order-1 w-full flex items-center justify-center lg:justify-start">
+            <div className="order-1 w-full lg:flex-1 flex items-center justify-center lg:justify-start">
               <img 
                 src="/samastha-centenary-hero.png" 
                 alt="Samastha Centenary Conference" 
-                className="w-full max-w-lg lg:max-w-xl h-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)] select-none pointer-events-none"
+                className="w-full max-w-lg lg:max-w-none lg:w-auto lg:h-[480px] xl:h-[515px] h-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)] select-none pointer-events-none"
               />
             </div>
 
             {/* ================= RIGHT COLUMN: Official Poster Card & Actions ================= */}
-            <div className="order-2 w-full flex flex-col gap-5 sm:gap-6 justify-center items-center max-w-md mx-auto">
+            <div className="order-2 w-full lg:w-[400px] xl:w-[440px] flex-shrink-0 flex flex-col gap-5 sm:gap-6 justify-center items-center max-w-md mx-auto lg:mx-0">
               <div className="w-full bg-white/10 backdrop-blur-xl p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-white/20 shadow-2xl text-center space-y-3 sm:space-y-4">
                 
                 {/* Official Conference Poster Image */}

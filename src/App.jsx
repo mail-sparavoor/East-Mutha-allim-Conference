@@ -16,31 +16,77 @@ export default function App() {
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [eventSettings, setEventSettings] = useState(null);
 
-  // Routing helper
-  const handleHashRouting = async (hash) => {
-    if (hash.startsWith('#ticket=')) {
-      const ticketId = hash.replace('#ticket=', '');
+  // Clean URL navigation helper (uses HTML5 History API without '#')
+  const navigate = (path, replace = false) => {
+    if (replace) {
+      window.history.replaceState({}, '', path);
+    } else {
+      window.history.pushState({}, '', path);
+    }
+    handlePathRouting();
+  };
+
+  // Resolve routing from pathname (clean URLs) with backward-compatibility fallback for hash links
+  const handlePathRouting = async () => {
+    const pathname = window.location.pathname;
+    const hash = window.location.hash;
+
+    // Check direct clean path /ticket/:id
+    if (pathname.startsWith('/ticket/')) {
+      const ticketId = pathname.replace('/ticket/', '').replace(/\/$/, '');
       if (ticketId) {
         try {
           const att = await api.getTicket(ticketId);
           setCurrentAttendee(att);
           setActiveTab('ticket');
+          return;
         } catch (e) {
           console.error('Failed to load linked ticket:', e);
         }
       }
-    } else if (hash === '#checkin') {
-      setActiveTab('checkin');
-    } else if (hash === '#admin') {
-      setActiveTab('admin');
-    } else if (hash === '#subadmin') {
-      setActiveTab('subadmin');
-    } else if (hash === '' || hash === '#register') {
-      setActiveTab('register');
     }
+
+    // Check legacy hash fallback #ticket=... and migrate to clean URL
+    if (hash.startsWith('#ticket=')) {
+      const ticketId = hash.replace('#ticket=', '');
+      if (ticketId) {
+        navigate(`/ticket/${ticketId}`, true);
+        return;
+      }
+    }
+
+    // Check /admin or #admin
+    if (pathname === '/admin' || pathname.startsWith('/admin/') || hash === '#admin') {
+      if (hash === '#admin') navigate('/admin', true);
+      setActiveTab('admin');
+      return;
+    }
+
+    // Check /subadmin or #subadmin
+    if (pathname === '/subadmin' || pathname.startsWith('/subadmin/') || hash === '#subadmin') {
+      if (hash === '#subadmin') navigate('/subadmin', true);
+      setActiveTab('subadmin');
+      return;
+    }
+
+    // Check /checkin or #checkin
+    if (pathname === '/checkin' || pathname.startsWith('/checkin/') || hash === '#checkin') {
+      if (hash === '#checkin') navigate('/checkin', true);
+      setActiveTab('checkin');
+      return;
+    }
+
+    // Check /lookup
+    if (pathname === '/lookup') {
+      setActiveTab('ticket-lookup');
+      return;
+    }
+
+    // Default: Main registration & landing view
+    setActiveTab('register');
   };
 
-  // Load public settings and verify existing admin token
+  // Load public settings, verify existing admin session, and initialize clean routing
   useEffect(() => {
     async function init() {
       try {
@@ -61,16 +107,16 @@ export default function App() {
         }
       }
 
-      handleHashRouting(window.location.hash);
+      handlePathRouting();
     }
     init();
 
-    // Listen to hash navigation changes
-    const onHashChange = () => {
-      handleHashRouting(window.location.hash);
+    // Listen for browser Back/Forward navigation
+    const onPopState = () => {
+      handlePathRouting();
     };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   // When activeTab is admin or subadmin and user is not signed in, prompt login modal
@@ -84,27 +130,28 @@ export default function App() {
   const handleRegistrationSuccess = (attendee) => {
     setCurrentAttendee(attendee);
     setActiveTab('ticket');
-    window.location.hash = `#ticket=${attendee.registration_id}`;
+    navigate(`/ticket/${attendee.registration_id}`);
   };
 
   // Handle ticket found from lookup
   const handleTicketFound = (attendee) => {
     setCurrentAttendee(attendee);
     setActiveTab('ticket');
-    window.location.hash = `#ticket=${attendee.registration_id}`;
+    navigate(`/ticket/${attendee.registration_id}`);
   };
 
   const handleAdminLoginSuccess = (admin) => {
     setAdminUser(admin);
     if (admin.role === 'subadmin') {
       setActiveTab('subadmin');
-      window.location.hash = '#subadmin';
+      navigate('/subadmin');
     } else {
-      if (window.location.hash === '#subadmin') {
+      if (window.location.pathname === '/subadmin' || window.location.hash === '#subadmin') {
         setActiveTab('subadmin');
+        navigate('/subadmin');
       } else {
         setActiveTab('admin');
-        window.location.hash = '#admin';
+        navigate('/admin');
       }
     }
   };
@@ -114,7 +161,7 @@ export default function App() {
     setAdminUser(null);
     if (activeTab === 'admin' || activeTab === 'subadmin') {
       setActiveTab('register');
-      window.location.hash = '';
+      navigate('/');
     }
   };
 
@@ -128,7 +175,10 @@ export default function App() {
           <LandingPage
             onRegistrationSuccess={handleRegistrationSuccess}
             eventSettings={eventSettings}
-            onOpenLookup={() => setActiveTab('ticket-lookup')}
+            onOpenLookup={() => {
+              setActiveTab('ticket-lookup');
+              navigate('/lookup');
+            }}
           />
         )}
 
@@ -138,7 +188,7 @@ export default function App() {
             eventSettings={eventSettings}
             onBack={() => {
               setActiveTab('register');
-              window.location.hash = '';
+              navigate('/');
             }}
           />
         )}
@@ -148,7 +198,7 @@ export default function App() {
             onTicketFound={handleTicketFound}
             onGoToRegister={() => {
               setActiveTab('register');
-              window.location.hash = '';
+              navigate('/');
             }}
           />
         )}
@@ -158,7 +208,7 @@ export default function App() {
             adminUser={adminUser}
             onBack={() => {
               setActiveTab('register');
-              window.location.hash = '';
+              navigate('/');
             }}
           />
         )}
@@ -171,16 +221,16 @@ export default function App() {
               onLogout={handleAdminLogout}
               onBack={() => {
                 setActiveTab('register');
-                window.location.hash = '';
+                navigate('/');
               }}
               onSwitchToSubAdmin={() => {
                 setActiveTab('subadmin');
-                window.location.hash = '#subadmin';
+                navigate('/subadmin');
               }}
               onViewTicket={(att) => {
                 setCurrentAttendee(att);
                 setActiveTab('ticket');
-                window.location.hash = `#ticket=${att.registration_id}`;
+                navigate(`/ticket/${att.registration_id}`);
               }}
             />
           ) : (
@@ -206,12 +256,12 @@ export default function App() {
               onLogout={handleAdminLogout}
               onBack={() => {
                 setActiveTab('register');
-                window.location.hash = '';
+                navigate('/');
               }}
               onViewTicket={(att) => {
                 setCurrentAttendee(att);
                 setActiveTab('ticket');
-                window.location.hash = `#ticket=${att.registration_id}`;
+                navigate(`/ticket/${att.registration_id}`);
               }}
             />
           ) : (
@@ -237,7 +287,7 @@ export default function App() {
           setLoginModalOpen(false);
           if ((activeTab === 'admin' || activeTab === 'subadmin') && !adminUser) {
             setActiveTab('register');
-            window.location.hash = '';
+            navigate('/');
           }
         }}
         onLoginSuccess={handleAdminLoginSuccess}

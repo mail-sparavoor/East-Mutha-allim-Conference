@@ -186,7 +186,7 @@ export default function TicketPass({ attendee, onBack, eventSettings }) {
 
   // Share link
   const handleShareLink = () => {
-    const url = `${window.location.origin}/#ticket=${ticketNumber}`;
+    const url = `${window.location.origin}/ticket/${ticketNumber}`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);

@@ -79,11 +79,11 @@ export default function LandingPage({
               <div className="w-full bg-white/10 backdrop-blur-xl p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-white/20 shadow-2xl text-center space-y-3 sm:space-y-4">
                 
                 {/* Official Conference Poster Image */}
-                <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 aspect-square max-w-[280px] sm:max-w-[340px] mx-auto bg-slate-900 group">
+                <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 max-w-[280px] sm:max-w-[340px] mx-auto bg-slate-900 group">
                   <img 
                     src="/muthaallim-poster.png" 
-                    alt="മലപ്പുറം ഈസ്റ്റ് ജില്ല മുതഅല്ലിം സമ്മേളനം - 19 നവംബർ 2026 വ്യാഴം, പുളിക്കൽ (ഐക്കരപ്പടി)" 
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    alt="മലപ്പുറം ഈസ്റ്റ് ജില്ല മുതഅല്ലിം സമ്മേളനം - 19 നവംബർ 2026 വ്യാഴം, പുളിക്കൽ" 
+                    className="w-full h-auto block transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
                 </div>

@@ -505,34 +505,9 @@ export default function RegistrationForm({
 
             {step === 2 && (
               <div className="pt-1">
-                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-[11px] text-emerald-900 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                    <span>Verified for <strong>{formData.full_name}</strong> (+91 {formData.mobile})</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        nameInputRef.current?.focus();
-                        nameInputRef.current?.select();
-                      }}
-                      className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit2 className="w-3 h-3" /> Edit Name
-                    </button>
-                    <span className="text-emerald-300">•</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        mobileInputRef.current?.focus();
-                        mobileInputRef.current?.select();
-                      }}
-                      className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit2 className="w-3 h-3" /> Edit Mobile
-                    </button>
-                  </div>
+                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-[11px] text-emerald-900 flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>Verified for <strong>{formData.full_name}</strong> (+91 {formData.mobile})</span>
                 </div>
               </div>
             )}

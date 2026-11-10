@@ -166,22 +166,34 @@ export default function RegistrationForm({
   const handleInstitutionChange = (e) => {
     const instId = e.target.value;
     const selected = institutions.find(i => String(i.id) === String(instId));
-    if (selected && (selected.is_full || (selected.quota > 0 && (selected.registered_count || 0) >= selected.quota))) {
+    if (!selected) {
+      setFormData(prev => ({ ...prev, institution_id: '', college: '' }));
+      return;
+    }
+
+    const hasQuota = selected.quota !== null && selected.quota !== undefined && Number(selected.quota) > 0;
+    if (!hasQuota) {
+      setErrors(prev => ({
+        ...prev,
+        college: `Registration is not permitted for "${selected.name}" as the required registration number/quota has not been provided.`
+      }));
+      setFormData(prev => ({ ...prev, institution_id: '', college: '' }));
+      return;
+    }
+
+    if (selected.is_full || (selected.registered_count || 0) >= selected.quota) {
       setErrors(prev => ({
         ...prev,
         college: `Registration limit reached for "${selected.name}" (${selected.quota}/${selected.quota} delegates registered). Please select another institution.`
       }));
-      setFormData(prev => ({
-        ...prev,
-        institution_id: '',
-        college: ''
-      }));
+      setFormData(prev => ({ ...prev, institution_id: '', college: '' }));
       return;
     }
+
     setFormData(prev => ({
       ...prev,
       institution_id: instId,
-      college: selected ? selected.name : ''
+      college: selected.name
     }));
     if (errors.college) setErrors(prev => ({ ...prev, college: null }));
   };
@@ -251,8 +263,13 @@ export default function RegistrationForm({
       errs.college = 'Please select your Academic Institution / Dars';
     } else {
       const selectedInst = institutions.find(i => String(i.id) === String(formData.institution_id));
-      if (selectedInst && (selectedInst.is_full || (selectedInst.quota > 0 && (selectedInst.registered_count || 0) >= selectedInst.quota))) {
-        errs.college = `Registration limit reached for "${selectedInst.name}" (${selectedInst.quota}/${selectedInst.quota} registered). Further registrations are closed.`;
+      if (selectedInst) {
+        const hasQuota = selectedInst.quota !== null && selectedInst.quota !== undefined && Number(selectedInst.quota) > 0;
+        if (!hasQuota) {
+          errs.college = `Registration is not permitted for "${selectedInst.name}". The required registration number/quota has not been provided.`;
+        } else if (selectedInst.is_full || (selectedInst.registered_count || 0) >= selectedInst.quota) {
+          errs.college = `Registration limit reached for "${selectedInst.name}" (${selectedInst.quota}/${selectedInst.quota} registered). Further registrations are closed.`;
+        }
       }
     }
 
@@ -612,11 +629,16 @@ export default function RegistrationForm({
                       <>
                         <option value="">-- Select Academic Institution / Dars --</option>
                         {institutions.map((inst) => {
-                          const isFull = inst.is_full || (inst.quota && inst.quota > 0 && (inst.registered_count || 0) >= inst.quota);
+                          const hasQuota = inst.quota !== null && inst.quota !== undefined && Number(inst.quota) > 0;
+                          const isFull = hasQuota ? (inst.is_full || (inst.registered_count || 0) >= inst.quota) : false;
+                          const isDisabled = !hasQuota || isFull;
+
                           let label = inst.name;
                           if (inst.code) label += ` (${inst.code})`;
 
-                          if (isFull) {
+                          if (!hasQuota) {
+                            label += ` — [REGISTRATION NOT PERMITTED]`;
+                          } else if (isFull) {
                             label += ` — [QUOTA FULL]`;
                           }
 
@@ -624,8 +646,8 @@ export default function RegistrationForm({
                             <option
                               key={inst.id}
                               value={inst.id}
-                              disabled={isFull}
-                              className={isFull ? 'text-slate-400 bg-slate-100' : ''}
+                              disabled={isDisabled}
+                              className={isDisabled ? 'text-slate-400 bg-slate-100 italic' : ''}
                             >
                               {label}
                             </option>
@@ -648,9 +670,9 @@ export default function RegistrationForm({
                           </span>
                         </div>
                       ) : (
-                        <p className="text-[11px] text-slate-500">
-                          Selected: <strong>{selectedInstitution.name}</strong> ({selectedInstitution.registered_count || 0} registered)
-                        </p>
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-2">
+                          <span>⚠️ Registration is not permitted for this establishment as the required registration quota has not been provided.</span>
+                        </div>
                       )}
                     </div>
                   ) : !formData.division_id ? (

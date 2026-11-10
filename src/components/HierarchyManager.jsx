@@ -223,6 +223,8 @@ export default function HierarchyManager({ onHierarchyChanged }) {
 
   const totalDivisions = tree.length;
   const totalInstitutions = tree.reduce((acc, div) => acc + (div.institutions?.length || 0), 0);
+  const institutionsWithQuota = tree.reduce((acc, div) => acc + (div.institutions?.filter(i => i.quota > 0)?.length || 0), 0);
+  const institutionsWithoutQuota = totalInstitutions - institutionsWithQuota;
 
   return (
     <div className="space-y-6">
@@ -236,13 +238,21 @@ export default function HierarchyManager({ onHierarchyChanged }) {
           <p className="text-xs text-slate-500 mt-0.5">
             Configure regional Divisions and the Academic Institutions falling under each division.
           </p>
-          <div className="flex items-center gap-2.5 mt-2">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
               {totalDivisions} Divisions
             </span>
             <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
-              {totalInstitutions} Institutions Configured
+              {totalInstitutions} Institutions
             </span>
+            <span className="text-[11px] font-semibold text-emerald-900 bg-emerald-100/70 px-2.5 py-0.5 rounded-full border border-emerald-300">
+              {institutionsWithQuota} Quota Active
+            </span>
+            {institutionsWithoutQuota > 0 && (
+              <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                {institutionsWithoutQuota} Pending Quota (Blocked)
+              </span>
+            )}
           </div>
         </div>
 
@@ -437,8 +447,8 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                                         </span>
                                       )
                                     ) : (
-                                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                                        {inst.registered_count || 0} registered • No limit
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-300">
+                                        ⚠️ No Quota Provided (Registrations Closed)
                                       </span>
                                     )}
                                   </div>
@@ -602,19 +612,19 @@ export default function HierarchyManager({ onHierarchyChanged }) {
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>Registration Limit / Quota</span>
-                  <span className="text-[10px] font-normal text-slate-400">Leave blank for unlimited</span>
+                  <span>Registration Quota / Permitted Limit <span className="text-rose-500">*</span></span>
+                  <span className="text-[10px] font-normal text-rose-600">Required for registration</span>
                 </label>
                 <input
                   type="number"
-                  min="0"
-                  placeholder="e.g. 10 (Max allowed registrations)"
+                  min="1"
+                  placeholder="e.g. 10 (Permitted number of delegates)"
                   value={modalData.quota ?? ''}
                   onChange={(e) => setModalData({ ...modalData, quota: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  When this limit is reached, public registration for this institution will be blocked.
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Enter the permitted registration number. Establishments without this number will not be permitted to register delegates.
                 </p>
               </div>
 

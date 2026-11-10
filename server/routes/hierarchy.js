@@ -74,14 +74,17 @@ router.get('/tree', async (req, res) => {
       const divInstitutions = (institutions || []).filter(i => i.division_id === div.id).map(inst => {
         const quotaNum = (inst.quota !== null && inst.quota !== undefined && inst.quota !== '') ? Number(inst.quota) : null;
         const regCount = Number(inst.registered_count || 0);
-        const isFull = (quotaNum !== null && quotaNum > 0) ? (regCount >= quotaNum) : false;
-        const remainingSeats = (quotaNum !== null && quotaNum > 0) ? Math.max(0, quotaNum - regCount) : null;
+        const hasQuota = quotaNum !== null && quotaNum > 0;
+        const isFull = hasQuota ? (regCount >= quotaNum) : false;
+        const remainingSeats = hasQuota ? Math.max(0, quotaNum - regCount) : 0;
         return {
           ...inst,
           quota: quotaNum,
+          has_quota: hasQuota,
           registered_count: regCount,
           is_full: isFull,
-          remaining: remainingSeats
+          remaining: remainingSeats,
+          can_register: hasQuota && !isFull
         };
       });
       const divSectors = (sectors || []).filter(s => s.division_id === div.id).map(sec => {
@@ -133,14 +136,17 @@ router.get('/institutions', async (req, res) => {
     const processed = (list || []).map(inst => {
       const quotaNum = (inst.quota !== null && inst.quota !== undefined && inst.quota !== '') ? Number(inst.quota) : null;
       const regCount = Number(inst.registered_count || 0);
-      const isFull = (quotaNum !== null && quotaNum > 0) ? (regCount >= quotaNum) : false;
-      const remainingSeats = (quotaNum !== null && quotaNum > 0) ? Math.max(0, quotaNum - regCount) : null;
+      const hasQuota = quotaNum !== null && quotaNum > 0;
+      const isFull = hasQuota ? (regCount >= quotaNum) : false;
+      const remainingSeats = hasQuota ? Math.max(0, quotaNum - regCount) : 0;
       return {
         ...inst,
         quota: quotaNum,
+        has_quota: hasQuota,
         registered_count: regCount,
         is_full: isFull,
-        remaining: remainingSeats
+        remaining: remainingSeats,
+        can_register: hasQuota && !isFull
       };
     });
 

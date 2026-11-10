@@ -617,9 +617,7 @@ export default function RegistrationForm({
                           if (inst.code) label += ` (${inst.code})`;
 
                           if (isFull) {
-                            label += ` — [QUOTA FULL (${inst.registered_count}/${inst.quota})]`;
-                          } else if (inst.quota && inst.quota > 0) {
-                            label += ` — (${inst.remaining} seats left of ${inst.quota})`;
+                            label += ` — [QUOTA FULL]`;
                           }
 
                           return (

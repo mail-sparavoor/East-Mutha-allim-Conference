@@ -155,6 +155,34 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // Check Institution Quota / Registration Limit
+    let targetInst = null;
+    if (resolvedInstitutionId) {
+      targetInst = await db.prepare('SELECT id, name, quota FROM institutions WHERE id = ?').get(resolvedInstitutionId);
+    } else if (finalCollege) {
+      targetInst = await db.prepare('SELECT id, name, quota FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(divRow.id, finalCollege);
+    }
+
+    if (targetInst && targetInst.quota !== null && targetInst.quota > 0) {
+      const regCountRow = await db.prepare(`
+        SELECT COUNT(*) as count 
+        FROM attendees 
+        WHERE (institution_id = ? OR (institution_id IS NULL AND LOWER(college) = LOWER(?)))
+          AND status != 'Cancelled'
+      `).get(targetInst.id, targetInst.name);
+
+      const currentCount = regCountRow ? Number(regCountRow.count) : 0;
+      if (currentCount >= targetInst.quota) {
+        return res.status(400).json({
+          error: `Registration limit reached: "${targetInst.name}" has reached its maximum permitted quota of ${targetInst.quota} delegates. Further registrations from this institution are closed.`,
+          quotaExceeded: true,
+          institution: targetInst.name,
+          quota: targetInst.quota,
+          registered: currentCount
+        });
+      }
+    }
+
     const secRow = sector_id ? await db.prepare('SELECT * FROM sectors WHERE id = ?').get(sector_id) : null;
     const unitRow = unit_id ? await db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) : null;
 

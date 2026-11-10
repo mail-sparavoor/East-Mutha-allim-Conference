@@ -104,17 +104,23 @@ export default function HierarchyManager({ onHierarchyChanged }) {
     setModalLoading(true);
     setModalError('');
     try {
+      const quotaVal = (modalData.quota !== undefined && modalData.quota !== null && String(modalData.quota).trim() !== '')
+        ? parseInt(modalData.quota, 10)
+        : null;
+
       if (modalData.id) {
         await api.updateInstitution(modalData.id, {
           division_id: modalData.division_id,
           name: modalData.name,
-          code: modalData.code
+          code: modalData.code,
+          quota: quotaVal
         });
       } else {
         await api.createInstitution({
           division_id: modalData.division_id,
           name: modalData.name,
-          code: modalData.code
+          code: modalData.code,
+          quota: quotaVal
         });
       }
       setModalType(null);
@@ -190,7 +196,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
 
   // Download sample CSV template
   const downloadSampleCsv = () => {
-    const csv = "Division,Institution,Code\r\nPulikkal,Markazu Ssaqafathi Ssunniyya (Pulikkal Campus),PLK-01\r\nPulikkal,Aikkarappadi Mahallu Dars,PLK-02\r\nKondotty,EMEA Arabic College & Dars,KON-01\r\nKondotty,Kondotty Qubba Mahallu Dars,KON-02\r\nMalappuram,Ma'din Academy Malappuram,MLP-01\r\nWandoor,Wandoor Central Mahallu Dars,WND-01\r\nAreekode,Areekode Majlis Dawa College,ARK-01\r\nManjeri West,Manjeri Central Juma Masjid Dars,MJW-01\r\nManjeri East,Karakunnu Mahallu Dars,MJE-01\r\nNilambur,Nilambur Town Juma Masjid Dars,NLR-01\r\nEdavannappra,Edavannappra Mahallu Dars,EDV-01\r\nEdakkara,Edakkara Central Mahallu Dars,EDK-01\r\nKolathur,Kolathur Mahallu Dars,KLT-01\r\nPerinthalmanna,Jamia Nooriya Arabic College Pattikkad,PTM-01\r\n";
+    const csv = "Division,Institution,Code,Quota\r\nPulikkal,Markazu Ssaqafathi Ssunniyya (Pulikkal Campus),PLK-01,15\r\nPulikkal,Aikkarappadi Mahallu Dars,PLK-02,10\r\nKondotty,EMEA Arabic College & Dars,KON-01,20\r\nKondotty,Kondotty Qubba Mahallu Dars,KON-02,8\r\nMalappuram,Ma'din Academy Malappuram,MLP-01,25\r\nWandoor,Wandoor Central Mahallu Dars,WND-01,10\r\nAreekode,Areekode Majlis Dawa College,ARK-01,15\r\nManjeri West,Manjeri Central Juma Masjid Dars,MJW-01,12\r\nManjeri East,Karakunnu Mahallu Dars,MJE-01,10\r\nNilambur,Nilambur Town Juma Masjid Dars,NLR-01,10\r\nEdavannappra,Edavannappra Mahallu Dars,EDV-01,10\r\nEdakkara,Edakkara Central Mahallu Dars,EDK-01,10\r\nKolathur,Kolathur Mahallu Dars,KLT-01,10\r\nPerinthalmanna,Jamia Nooriya Arabic College Pattikkad,PTM-01,30\r\n";
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -200,7 +206,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
   };
 
   const copySampleFormat = () => {
-    const sample = `Division,Institution,Code\nPulikkal,Markazu Ssaqafathi Ssunniyya,PLK-01\nPulikkal,Aikkarappadi Mahallu Dars,PLK-02\nKondotty,EMEA Arabic College & Dars,KON-01\nMalappuram,Ma'din Academy,MLP-01`;
+    const sample = `Division,Institution,Code,Quota\nPulikkal,Markazu Ssaqafathi Ssunniyya,PLK-01,15\nPulikkal,Aikkarappadi Mahallu Dars,PLK-02,10\nKondotty,EMEA Arabic College & Dars,KON-01,20\nMalappuram,Ma'din Academy,MLP-01,25`;
     navigator.clipboard.writeText(sample);
     setCopiedSample(true);
     setTimeout(() => setCopiedSample(false), 2000);
@@ -346,7 +352,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                       <button
                         onClick={() => {
                           setModalType('institution');
-                          setModalData({ division_id: div.id, division_name: div.name, name: '', code: '' });
+                          setModalData({ division_id: div.id, division_name: div.name, name: '', code: '', quota: '' });
                           setModalError('');
                         }}
                         className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
@@ -389,7 +395,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                           <button
                             onClick={() => {
                               setModalType('institution');
-                              setModalData({ division_id: div.id, division_name: div.name, name: '', code: '' });
+                              setModalData({ division_id: div.id, division_name: div.name, name: '', code: '', quota: '' });
                               setModalError('');
                             }}
                             className="text-emerald-700 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
@@ -402,19 +408,40 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                           {institutionsList.map((inst) => (
                             <div 
                               key={inst.id} 
-                              className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs flex items-center justify-between gap-2 hover:border-emerald-300 transition"
+                              className={`bg-white rounded-xl border p-2.5 shadow-2xs flex items-center justify-between gap-2 transition ${
+                                inst.is_full ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200 hover:border-emerald-300'
+                              }`}
                             >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <GraduationCap className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <GraduationCap className={`w-4 h-4 flex-shrink-0 ${inst.is_full ? 'text-rose-500' : 'text-amber-600'}`} />
                                 <div className="truncate">
-                                  <p className="text-xs font-semibold text-slate-800 truncate" title={inst.name}>
-                                    {inst.name}
-                                  </p>
-                                  {inst.code && (
-                                    <span className="text-[10px] font-mono text-slate-400">
-                                      Code: {inst.code}
-                                    </span>
-                                  )}
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <p className="text-xs font-semibold text-slate-800 truncate" title={inst.name}>
+                                      {inst.name}
+                                    </p>
+                                    {inst.code && (
+                                      <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
+                                        ({inst.code})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                    {inst.quota && inst.quota > 0 ? (
+                                      inst.is_full ? (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-300">
+                                          Quota Full: {inst.registered_count}/{inst.quota}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                          Quota: {inst.registered_count}/{inst.quota} ({inst.remaining} left)
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                                        {inst.registered_count || 0} registered • No limit
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
@@ -427,12 +454,13 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                                       division_id: div.id,
                                       division_name: div.name,
                                       name: inst.name,
-                                      code: inst.code
+                                      code: inst.code,
+                                      quota: inst.quota ?? ''
                                     });
                                     setModalError('');
                                   }}
                                   className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition cursor-pointer"
-                                  title="Edit Institution"
+                                  title="Edit Institution & Quota"
                                 >
                                   <Edit2 className="w-3 h-3" />
                                 </button>
@@ -572,6 +600,24 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                 />
               </div>
 
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Registration Limit / Quota</span>
+                  <span className="text-[10px] font-normal text-slate-400">Leave blank for unlimited</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 10 (Max allowed registrations)"
+                  value={modalData.quota ?? ''}
+                  onChange={(e) => setModalData({ ...modalData, quota: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  When this limit is reached, public registration for this institution will be blocked.
+                </p>
+              </div>
+
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
@@ -615,7 +661,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                 Upload a <strong>.CSV</strong> or text file, or paste your list below formatted as:
                 <br />
                 <code className="bg-slate-100 px-2 py-0.5 rounded text-[11px] font-mono text-emerald-800">
-                  Division, Institution, Code(optional)
+                  Division, Institution, Code(optional), Quota(optional)
                 </code>
               </p>
               
@@ -668,7 +714,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
               </label>
               <textarea
                 rows={9}
-                placeholder="Pulikkal, Markazu Ssaqafathi Ssunniyya, PLK-01&#10;Pulikkal, Aikkarappadi Mahallu Dars, PLK-02&#10;Kondotty, EMEA Arabic College & Dars, KON-01&#10;Malappuram, Ma'din Academy, MLP-01"
+                placeholder="Pulikkal, Markazu Ssaqafathi Ssunniyya, PLK-01, 15&#10;Pulikkal, Aikkarappadi Mahallu Dars, PLK-02, 10&#10;Kondotty, EMEA Arabic College & Dars, KON-01, 20&#10;Malappuram, Ma'din Academy, MLP-01, 25"
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
                 className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50/50"

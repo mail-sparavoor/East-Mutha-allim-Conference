@@ -204,11 +204,22 @@ export async function initializeSeedData() {
         division_id INT NOT NULL,
         name VARCHAR(255) NOT NULL,
         code VARCHAR(50) NULL DEFAULT NULL,
+        quota INT NULL DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_institutions_division (division_id),
         CONSTRAINT fk_institutions_division FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+
+    // Ensure institutions table has quota column
+    try {
+      const instCols = await db.prepare('DESCRIBE institutions').all();
+      if (Array.isArray(instCols) && !instCols.some(c => c.Field === 'quota')) {
+        await pool.query('ALTER TABLE institutions ADD COLUMN quota INT NULL DEFAULT NULL AFTER code');
+      }
+    } catch (e) {
+      // Ignore if column check fails or already present
+    }
 
     // Ensure attendees table has institution_id column
     try {

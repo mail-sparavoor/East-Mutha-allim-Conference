@@ -54,6 +54,7 @@ CREATE TABLE `institutions` (
   `division_id` INT NOT NULL,
   `name` VARCHAR(255) NOT NULL,
   `code` VARCHAR(50) NULL DEFAULT NULL,
+  `quota` INT NULL DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_institutions_division` (`division_id`),
   CONSTRAINT `fk_institutions_division` FOREIGN KEY (`division_id`) REFERENCES `divisions` (`id`) ON DELETE CASCADE

@@ -50,7 +50,13 @@ router.get('/tree', async (req, res) => {
     const divisions = await db.prepare('SELECT * FROM divisions ORDER BY name ASC').all();
     let institutions = [];
     try {
-      institutions = await db.prepare('SELECT * FROM institutions ORDER BY name ASC').all();
+      institutions = await db.prepare(`
+        SELECT 
+          i.*,
+          (SELECT COUNT(*) FROM attendees a WHERE (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.status != 'Cancelled') as registered_count
+        FROM institutions i 
+        ORDER BY i.name ASC
+      `).all();
     } catch (e) {
       institutions = [];
     }
@@ -65,7 +71,19 @@ router.get('/tree', async (req, res) => {
     }
 
     const tree = divisions.map(div => {
-      const divInstitutions = (institutions || []).filter(i => i.division_id === div.id);
+      const divInstitutions = (institutions || []).filter(i => i.division_id === div.id).map(inst => {
+        const quotaNum = (inst.quota !== null && inst.quota !== undefined && inst.quota !== '') ? Number(inst.quota) : null;
+        const regCount = Number(inst.registered_count || 0);
+        const isFull = (quotaNum !== null && quotaNum > 0) ? (regCount >= quotaNum) : false;
+        const remainingSeats = (quotaNum !== null && quotaNum > 0) ? Math.max(0, quotaNum - regCount) : null;
+        return {
+          ...inst,
+          quota: quotaNum,
+          registered_count: regCount,
+          is_full: isFull,
+          remaining: remainingSeats
+        };
+      });
       const divSectors = (sectors || []).filter(s => s.division_id === div.id).map(sec => {
         const secUnits = (units || []).filter(u => u.sector_id === sec.id);
         return {
@@ -90,17 +108,43 @@ router.get('/tree', async (req, res) => {
 router.get('/institutions', async (req, res) => {
   try {
     const { division_id } = req.query;
+    let list;
     if (division_id) {
-      const list = await db.prepare('SELECT * FROM institutions WHERE division_id = ? ORDER BY name ASC').all(division_id);
-      return res.json(list);
+      list = await db.prepare(`
+        SELECT 
+          i.*,
+          (SELECT COUNT(*) FROM attendees a WHERE (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.status != 'Cancelled') as registered_count
+        FROM institutions i 
+        WHERE i.division_id = ? 
+        ORDER BY i.name ASC
+      `).all(division_id);
+    } else {
+      list = await db.prepare(`
+        SELECT 
+          i.*, 
+          d.name as division_name,
+          (SELECT COUNT(*) FROM attendees a WHERE (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.status != 'Cancelled') as registered_count
+        FROM institutions i 
+        JOIN divisions d ON i.division_id = d.id 
+        ORDER BY d.name ASC, i.name ASC
+      `).all();
     }
-    const all = await db.prepare(`
-      SELECT i.*, d.name as division_name 
-      FROM institutions i 
-      JOIN divisions d ON i.division_id = d.id 
-      ORDER BY d.name ASC, i.name ASC
-    `).all();
-    res.json(all);
+
+    const processed = (list || []).map(inst => {
+      const quotaNum = (inst.quota !== null && inst.quota !== undefined && inst.quota !== '') ? Number(inst.quota) : null;
+      const regCount = Number(inst.registered_count || 0);
+      const isFull = (quotaNum !== null && quotaNum > 0) ? (regCount >= quotaNum) : false;
+      const remainingSeats = (quotaNum !== null && quotaNum > 0) ? Math.max(0, quotaNum - regCount) : null;
+      return {
+        ...inst,
+        quota: quotaNum,
+        registered_count: regCount,
+        is_full: isFull,
+        remaining: remainingSeats
+      };
+    });
+
+    res.json(processed);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -255,7 +299,7 @@ router.delete('/unit/:id', requireAdmin, async (req, res) => {
 // Institution Admin Routes:
 router.post('/institution', requireAdmin, async (req, res) => {
   try {
-    const { division_id, name, code } = req.body;
+    const { division_id, name, code, quota } = req.body;
     if (!division_id) {
       return res.status(400).json({ error: 'Division selection is required' });
     }
@@ -274,7 +318,20 @@ router.post('/institution', requireAdmin, async (req, res) => {
     }
 
     const cleanCode = (code || '').trim().toUpperCase();
-    const result = await db.prepare('INSERT INTO institutions (division_id, name, code) VALUES (?, ?, ?)').run(division_id, cleanName, cleanCode || null);
+    let quotaVal = null;
+    if (quota !== undefined && quota !== null && String(quota).trim() !== '') {
+      const q = parseInt(quota, 10);
+      if (!isNaN(q) && q >= 0) {
+        quotaVal = q;
+      }
+    }
+
+    const result = await db.prepare('INSERT INTO institutions (division_id, name, code, quota) VALUES (?, ?, ?, ?)').run(
+      division_id, 
+      cleanName, 
+      cleanCode || null,
+      quotaVal
+    );
 
     // Keep legacy colleges table in sync
     try {
@@ -286,6 +343,7 @@ router.post('/institution', requireAdmin, async (req, res) => {
       division_id,
       name: cleanName,
       code: cleanCode,
+      quota: quotaVal,
       success: true
     });
   } catch (err) {
@@ -296,7 +354,7 @@ router.post('/institution', requireAdmin, async (req, res) => {
 router.put('/institution/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { division_id, name, code } = req.body;
+    const { division_id, name, code, quota } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Institution name is required' });
     }
@@ -305,11 +363,29 @@ router.put('/institution/:id', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Institution name must be in English text only (A-Z)' });
     }
     const cleanCode = (code || '').trim().toUpperCase();
+    let quotaVal = null;
+    if (quota !== undefined && quota !== null && String(quota).trim() !== '') {
+      const q = parseInt(quota, 10);
+      if (!isNaN(q) && q >= 0) {
+        quotaVal = q;
+      }
+    }
 
     if (division_id) {
-      await db.prepare('UPDATE institutions SET division_id = ?, name = ?, code = ? WHERE id = ?').run(division_id, cleanName, cleanCode || null, id);
+      await db.prepare('UPDATE institutions SET division_id = ?, name = ?, code = ?, quota = ? WHERE id = ?').run(
+        division_id, 
+        cleanName, 
+        cleanCode || null, 
+        quotaVal,
+        id
+      );
     } else {
-      await db.prepare('UPDATE institutions SET name = ?, code = ? WHERE id = ?').run(cleanName, cleanCode || null, id);
+      await db.prepare('UPDATE institutions SET name = ?, code = ?, quota = ? WHERE id = ?').run(
+        cleanName, 
+        cleanCode || null, 
+        quotaVal,
+        id
+      );
     }
 
     res.json({ success: true, message: 'Institution updated' });
@@ -328,7 +404,7 @@ router.delete('/institution/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// Bulk import institutions under divisions (supports CSV text or array of { division, institution, code })
+// Bulk import institutions under divisions (supports CSV text or array of { division, institution, code, quota })
 router.post('/bulk-institutions', requireAdmin, async (req, res) => {
   try {
     const { rows, text } = req.body;
@@ -342,20 +418,37 @@ router.post('/bulk-institutions', requireAdmin, async (req, res) => {
       for (let i = startIndex; i < lines.length; i++) {
         const parts = lines[i].split(',').map(p => p.trim().replace(/^["']|["']$/g, ''));
         if (parts.length >= 2) {
+          let codePart = '';
+          let quotaPart = null;
+
+          if (parts.length === 3) {
+            // Check if 3rd part is purely a number (quota) or a code
+            if (/^\d+$/.test(parts[2])) {
+              quotaPart = parts[2];
+            } else {
+              codePart = parts[2];
+            }
+          } else if (parts.length >= 4) {
+            codePart = parts[2];
+            quotaPart = parts[3];
+          }
+
           itemsToProcess.push({
             division: parts[0],
             institution: parts[1],
-            code: parts[2] || ''
+            code: codePart,
+            quota: quotaPart
           });
         }
       }
     }
 
     if (itemsToProcess.length === 0) {
-      return res.status(400).json({ error: 'No valid rows provided. Required format: Division, Institution' });
+      return res.status(400).json({ error: 'No valid rows provided. Required format: Division, Institution, Code(optional), Quota(optional)' });
     }
 
     let addedInstitutions = 0;
+    let updatedInstitutions = 0;
     let createdDivisions = 0;
     let skipped = 0;
 
@@ -363,6 +456,13 @@ router.post('/bulk-institutions', requireAdmin, async (req, res) => {
       const divName = (item.division || item.Division || '').trim();
       const instName = (item.institution || item.Institution || item.name || item.Name || '').trim();
       const code = (item.code || item.Code || '').trim();
+      const rawQuota = item.quota ?? item.limit ?? item.Quota ?? item.Limit ?? item.max ?? item.seats;
+
+      let parsedQuota = null;
+      if (rawQuota !== undefined && rawQuota !== null && String(rawQuota).trim() !== '') {
+        const q = parseInt(rawQuota, 10);
+        if (!isNaN(q) && q >= 0) parsedQuota = q;
+      }
 
       if (!divName || !instName) {
         skipped++;
@@ -378,25 +478,34 @@ router.post('/bulk-institutions', requireAdmin, async (req, res) => {
       }
 
       // Check if institution already exists under this division
-      const existingInst = await db.prepare('SELECT id FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(div.id, instName);
+      const existingInst = await db.prepare('SELECT id, quota, code FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(div.id, instName);
       if (!existingInst) {
-        await db.prepare('INSERT INTO institutions (division_id, name, code) VALUES (?, ?, ?)').run(div.id, instName, code || null);
+        await db.prepare('INSERT INTO institutions (division_id, name, code, quota) VALUES (?, ?, ?, ?)').run(div.id, instName, code || null, parsedQuota);
         addedInstitutions++;
         // Keep colleges table synchronized
         try {
           await db.prepare('INSERT IGNORE INTO colleges (name) VALUES (?)').run(instName);
         } catch (_) {}
       } else {
-        skipped++;
+        // If already exists, update quota or code if provided
+        if (parsedQuota !== null || code) {
+          const finalQuota = parsedQuota !== null ? parsedQuota : existingInst.quota;
+          const finalCode = code || existingInst.code;
+          await db.prepare('UPDATE institutions SET quota = ?, code = ? WHERE id = ?').run(finalQuota, finalCode, existingInst.id);
+          updatedInstitutions++;
+        } else {
+          skipped++;
+        }
       }
     }
 
     res.json({
       success: true,
       addedInstitutions,
+      updatedInstitutions,
       createdDivisions,
       skipped,
-      message: `Bulk import completed: ${addedInstitutions} institutions added across ${createdDivisions} new and existing divisions.`
+      message: `Bulk import completed: ${addedInstitutions} institutions added, ${updatedInstitutions} updated across ${createdDivisions} new and existing divisions.`
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

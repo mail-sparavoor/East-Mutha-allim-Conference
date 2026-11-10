@@ -166,6 +166,18 @@ export default function RegistrationForm({
   const handleInstitutionChange = (e) => {
     const instId = e.target.value;
     const selected = institutions.find(i => String(i.id) === String(instId));
+    if (selected && (selected.is_full || (selected.quota > 0 && (selected.registered_count || 0) >= selected.quota))) {
+      setErrors(prev => ({
+        ...prev,
+        college: `Registration limit reached for "${selected.name}" (${selected.quota}/${selected.quota} delegates registered). Please select another institution.`
+      }));
+      setFormData(prev => ({
+        ...prev,
+        institution_id: '',
+        college: ''
+      }));
+      return;
+    }
     setFormData(prev => ({
       ...prev,
       institution_id: instId,
@@ -237,6 +249,11 @@ export default function RegistrationForm({
     if (!formData.division_id) errs.division_id = 'Please select your Division';
     if (!formData.institution_id || !formData.college) {
       errs.college = 'Please select your Academic Institution / Dars';
+    } else {
+      const selectedInst = institutions.find(i => String(i.id) === String(formData.institution_id));
+      if (selectedInst && (selectedInst.is_full || (selectedInst.quota > 0 && (selectedInst.registered_count || 0) >= selectedInst.quota))) {
+        errs.college = `Registration limit reached for "${selectedInst.name}" (${selectedInst.quota}/${selectedInst.quota} registered). Further registrations are closed.`;
+      }
     }
 
     if (Object.keys(errs).length > 0) {
@@ -260,6 +277,9 @@ export default function RegistrationForm({
         onRegistrationSuccess(response.attendee);
       }
     } catch (err) {
+      if (err.quotaExceeded || (err.message && err.message.toLowerCase().includes('limit reached'))) {
+        setErrors(prev => ({ ...prev, college: err.message || err.error }));
+      }
       setServerError(err.message || 'Registration failed. Please check inputs.');
     } finally {
       setSubmitting(false);
@@ -267,6 +287,7 @@ export default function RegistrationForm({
   };
 
   const selectedDivision = divisions.find(d => String(d.id) === String(formData.division_id));
+  const selectedInstitution = institutions.find(i => String(i.id) === String(formData.institution_id));
 
   return (
     <div id="registration-section" className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
@@ -590,16 +611,50 @@ export default function RegistrationForm({
                     ) : (
                       <>
                         <option value="">-- Select Academic Institution / Dars --</option>
-                        {institutions.map((inst) => (
-                          <option key={inst.id} value={inst.id}>
-                            {inst.name} {inst.code ? `(${inst.code})` : ''}
-                          </option>
-                        ))}
+                        {institutions.map((inst) => {
+                          const isFull = inst.is_full || (inst.quota && inst.quota > 0 && (inst.registered_count || 0) >= inst.quota);
+                          let label = inst.name;
+                          if (inst.code) label += ` (${inst.code})`;
+
+                          if (isFull) {
+                            label += ` — [QUOTA FULL (${inst.registered_count}/${inst.quota})]`;
+                          } else if (inst.quota && inst.quota > 0) {
+                            label += ` — (${inst.remaining} seats left of ${inst.quota})`;
+                          }
+
+                          return (
+                            <option
+                              key={inst.id}
+                              value={inst.id}
+                              disabled={isFull}
+                              className={isFull ? 'text-slate-400 bg-slate-100' : ''}
+                            >
+                              {label}
+                            </option>
+                          );
+                        })}
                       </>
                     )}
                   </select>
                   {errors.college ? (
-                    <p className="mt-1 text-xs text-rose-600 font-medium">{errors.college}</p>
+                    <p className="mt-1.5 text-xs text-rose-600 font-semibold p-2 rounded-xl bg-rose-50 border border-rose-200">
+                      ⚠️ {errors.college}
+                    </p>
+                  ) : selectedInstitution ? (
+                    <div className="mt-2 text-xs">
+                      {selectedInstitution.quota && selectedInstitution.quota > 0 ? (
+                        <div className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200 font-medium">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span>
+                            Registration permitted: <strong>{selectedInstitution.remaining}</strong> seats remaining (Quota: {selectedInstitution.registered_count}/{selectedInstitution.quota})
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          Selected: <strong>{selectedInstitution.name}</strong> ({selectedInstitution.registered_count || 0} registered)
+                        </p>
+                      )}
+                    </div>
                   ) : !formData.division_id ? (
                     <p className="mt-1 text-[11px] text-slate-400">
                       Choose your regional division first to see institutions belonging to that division.

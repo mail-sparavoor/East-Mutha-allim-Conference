@@ -85,14 +85,18 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
 
     const byDiv = breakdown?.byDivision || [];
 
-    // Map each standard division with its count and original index
+    // Map each standard division with its count, allocated quota, and percentage
     const list = divisionsOrder.map((divName, idx) => {
       const targetKey = norm(divName);
       const found = byDiv.find((d) => norm(d.name) === targetKey);
       const count = found ? (Number(found.total_attendees) || 0) : 0;
+      const quota = found ? (Number(found.allocated_quota) || 0) : 0;
+      const pct = quota > 0 ? Math.round((count / quota) * 100) : 0;
       return {
         name: divName,
         count,
+        quota,
+        pct,
         originalIndex: idx
       };
     });
@@ -101,9 +105,14 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
     const handledKeys = new Set(divisionsOrder.map(norm));
     const extraDivs = byDiv.filter(d => !handledKeys.has(norm(d.name)));
     extraDivs.forEach((extra, i) => {
+      const count = Number(extra.total_attendees) || 0;
+      const quota = Number(extra.allocated_quota) || 0;
+      const pct = quota > 0 ? Math.round((count / quota) * 100) : 0;
       list.push({
         name: extra.name,
-        count: Number(extra.total_attendees) || 0,
+        count,
+        quota,
+        pct,
         originalIndex: divisionsOrder.length + i
       });
     });
@@ -118,12 +127,16 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
       'Malappuram East District',
       "Mutha'allim Conference",
       '',
-      '*Attendee Breakdown*',
+      '*Attendee Breakdown (Quota & Progress)*',
       ''
     ];
 
     list.forEach((item, idx) => {
-      lines.push(`${idx + 1}. ${item.name}: ${item.count}`);
+      if (item.quota > 0) {
+        lines.push(`${idx + 1}. ${item.name}: ${item.count}/${item.quota} (${item.pct}%)`);
+      } else {
+        lines.push(`${idx + 1}. ${item.name}: ${item.count}`);
+      }
     });
 
     lines.push('');
@@ -392,7 +405,10 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {breakdown.byDivision.map((div) => {
-                  const pct = total > 0 ? Math.round((div.total_attendees / total) * 100) : 0;
+                  const quota = Number(div.allocated_quota) || 0;
+                  const pct = quota > 0 
+                    ? Math.round((div.total_attendees / quota) * 100) 
+                    : 0;
                   const admittedPct = div.total_attendees > 0 
                     ? Math.round((div.admitted_count / div.total_attendees) * 100) 
                     : 0;
@@ -415,22 +431,33 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
                           )}
                         </div>
                         <div className="text-right">
-                          <span className="font-bold text-sm text-slate-900">{div.total_attendees}</span>
-                          <span className="text-xs text-slate-400 ml-1">({pct}%)</span>
+                          <span className="font-bold text-sm text-slate-900">
+                            {div.total_attendees}{quota > 0 ? ` / ${quota}` : ''}
+                          </span>
+                          <span className="text-xs text-emerald-700 font-bold ml-1.5">
+                            ({pct}%)
+                          </span>
                         </div>
                       </div>
 
-                      {/* Percentage share bar */}
+                      {/* Quota progress bar */}
                       <div className="w-full bg-slate-200/70 rounded-full h-2 overflow-hidden">
                         <div 
-                          className="bg-emerald-600 h-2 rounded-full"
-                          style={{ width: `${pct}%` }}
+                          className="bg-emerald-600 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, pct)}%` }}
                         />
                       </div>
 
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                        <span>Admitted: <strong className="text-emerald-700">{div.admitted_count}</strong></span>
-                        <span>Admission Rate: <strong className="text-slate-700">{admittedPct}%</strong></span>
+                        <span>
+                          Quota: <strong className="text-slate-800">{quota > 0 ? `${quota} seats` : 'Not set'}</strong>
+                          {quota > 0 && (
+                            <span className="ml-1 text-slate-400">({Math.max(0, quota - div.total_attendees)} left)</span>
+                          )}
+                        </span>
+                        <span>
+                          Admitted: <strong className="text-emerald-700">{div.admitted_count}</strong> ({admittedPct}%)
+                        </span>
                       </div>
                     </div>
                   );
@@ -523,32 +550,53 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {breakdown.byCollege.map((col, idx) => {
-                  const pct = total > 0 ? Math.round((col.total_attendees / total) * 100) : 0;
+                  const quota = Number(col.allocated_quota) || 0;
+                  const pct = quota > 0 
+                    ? Math.round((col.total_attendees / quota) * 100) 
+                    : 0;
                   return (
                     <div 
                       key={idx} 
                       className="p-3.5 rounded-xl border border-slate-200/80 bg-white hover:border-emerald-300 transition space-y-1.5"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
                           <GraduationCap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                          <span className="font-semibold text-xs text-slate-800 leading-snug">
-                            {col.college}
-                          </span>
+                          <div className="truncate">
+                            <span className="font-semibold text-xs text-slate-800 leading-snug block truncate" title={col.college}>
+                              {col.college}
+                            </span>
+                            {col.division_name && (
+                              <span className="text-[10px] text-slate-400 block truncate">
+                                {col.division_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className="font-bold text-xs text-slate-900 flex-shrink-0">
-                          {col.total_attendees}
-                        </span>
+                        <div className="text-right flex-shrink-0">
+                          <span className="font-bold text-xs text-slate-900">
+                            {col.total_attendees}{quota > 0 ? ` / ${quota}` : ''}
+                          </span>
+                          {quota > 0 && (
+                            <span className="text-[11px] text-amber-700 font-bold ml-1">
+                              ({pct}%)
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                         <div 
-                          className="bg-amber-500 h-1.5 rounded-full"
-                          style={{ width: `${pct}%` }}
+                          className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, pct)}%` }}
                         />
                       </div>
                       <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Admitted: {col.admitted_count}</span>
-                        <span>{pct}% of delegates</span>
+                        <span>Admitted: <strong className="text-slate-600">{col.admitted_count}</strong></span>
+                        <span>
+                          {quota > 0 
+                            ? `${pct}% of quota (${col.total_attendees}/${quota})` 
+                            : `${col.total_attendees} registered`}
+                        </span>
                       </div>
                     </div>
                   );

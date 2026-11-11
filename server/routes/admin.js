@@ -94,14 +94,15 @@ router.get('/analytics', requireAdmin, async (req, res) => {
     const pendingAdm = Number(overview?.pending_admissions) || 0;
     const admissionRate = totalReg > 0 ? Math.round((totalAdm / totalReg) * 100) : 0;
 
-    // 2. Breakdown by Division
+    // 2. Breakdown by Division with allocated quota
     const divisionBreakdown = await db.prepare(`
       SELECT 
         d.id,
         d.name,
         d.code,
         COUNT(a.id) as total_attendees,
-        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count
+        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        COALESCE((SELECT SUM(i.quota) FROM institutions i WHERE i.division_id = d.id AND i.quota > 0), 0) as allocated_quota
       FROM divisions d
       LEFT JOIN attendees a ON d.id = a.division_id
       GROUP BY d.id, d.name, d.code
@@ -150,17 +151,22 @@ router.get('/analytics', requireAdmin, async (req, res) => {
       unitBreakdown = [];
     }
 
-    // 5. Breakdown by Dars / Dawa College
+    // 5. Breakdown by Dars / Dawa College with allocated quota
     const collegeBreakdown = await db.prepare(`
       SELECT 
-        college,
-        COUNT(*) as total_attendees,
-        SUM(CASE WHEN status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count
-      FROM attendees
-      WHERE college IS NOT NULL AND college != ''
-      GROUP BY college
+        a.college,
+        COUNT(a.id) as total_attendees,
+        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        COALESCE(MAX(i.quota), 0) as allocated_quota,
+        MAX(i.id) as institution_id,
+        MAX(d.name) as division_name
+      FROM attendees a
+      LEFT JOIN institutions i ON (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name)))
+      LEFT JOIN divisions d ON i.division_id = d.id
+      WHERE a.college IS NOT NULL AND a.college != ''
+      GROUP BY a.college
       ORDER BY total_attendees DESC
-      LIMIT 25
+      LIMIT 50
     `).all();
 
     // 6. Recent Registrations (latest 10)
@@ -203,11 +209,17 @@ router.get('/analytics', requireAdmin, async (req, res) => {
       },
       hierarchyCounts: counts,
       breakdown: {
-        byDivision: (divisionBreakdown || []).map(r => ({
-          ...r,
-          total_attendees: Number(r.total_attendees) || 0,
-          admitted_count: Number(r.admitted_count) || 0
-        })),
+        byDivision: (divisionBreakdown || []).map(r => {
+          const quota = Number(r.allocated_quota) || 0;
+          const count = Number(r.total_attendees) || 0;
+          return {
+            ...r,
+            total_attendees: count,
+            admitted_count: Number(r.admitted_count) || 0,
+            allocated_quota: quota,
+            quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0
+          };
+        }),
         bySector: (sectorBreakdown || []).map(r => ({
           ...r,
           total_attendees: Number(r.total_attendees) || 0,
@@ -218,11 +230,17 @@ router.get('/analytics', requireAdmin, async (req, res) => {
           total_attendees: Number(r.total_attendees) || 0,
           admitted_count: Number(r.admitted_count) || 0
         })),
-        byCollege: (collegeBreakdown || []).map(r => ({
-          ...r,
-          total_attendees: Number(r.total_attendees) || 0,
-          admitted_count: Number(r.admitted_count) || 0
-        }))
+        byCollege: (collegeBreakdown || []).map(r => {
+          const quota = Number(r.allocated_quota) || 0;
+          const count = Number(r.total_attendees) || 0;
+          return {
+            ...r,
+            total_attendees: count,
+            admitted_count: Number(r.admitted_count) || 0,
+            allocated_quota: quota,
+            quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0
+          };
+        })
       },
       recentRegistrations
     });

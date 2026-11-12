@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   UserCheck, 
@@ -13,12 +13,31 @@ import {
   BarChart3,
   Loader2,
   Copy,
-  Check
+  Check,
+  X,
+  Search,
+  Filter
 } from 'lucide-react';
 
 export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
   const [selectedHierarchyTab, setSelectedHierarchyTab] = useState('division'); // division | sector | unit | college
   const [copiedBreakdown, setCopiedBreakdown] = useState(false);
+  const [selectedDivisionModal, setSelectedDivisionModal] = useState(null);
+  const [modalSearch, setModalSearch] = useState('');
+  const [modalRegFilter, setModalRegFilter] = useState('all'); // all | registered | zero
+  const [selectedCollegeDivisionFilter, setSelectedCollegeDivisionFilter] = useState('all');
+  const [collegeSearch, setCollegeSearch] = useState('');
+
+  useEffect(() => {
+    if (!selectedDivisionModal) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedDivisionModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDivisionModal]);
 
   if (!analyticsData) {
     return (
@@ -60,6 +79,84 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
     byCollege: []
   };
   const total = overview.total_registrations || 0;
+  const allColleges = breakdown.byCollege || [];
+
+  const filteredColleges = allColleges.filter((col) => {
+    const matchesDivision =
+      selectedCollegeDivisionFilter === 'all' ||
+      String(col.division_id) === String(selectedCollegeDivisionFilter);
+    const q = collegeSearch.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      (col.college || '').toLowerCase().includes(q) ||
+      (col.division_name || '').toLowerCase().includes(q);
+    return matchesDivision && matchesSearch;
+  });
+
+  const openDivisionModal = (div) => {
+    setSelectedDivisionModal(div);
+    setModalSearch('');
+    setModalRegFilter('all');
+  };
+
+  const renderCollegeCard = (col, idx) => {
+    const quota = Number(col.allocated_quota) || 0;
+    const pct = quota > 0
+      ? Math.round((col.total_attendees / quota) * 100)
+      : 0;
+    const isFull = quota > 0 && col.total_attendees >= quota;
+
+    return (
+      <div
+        key={col.institution_id || `${col.college}-${idx}`}
+        className="p-3.5 rounded-xl border border-slate-200/80 bg-white hover:border-emerald-300 transition space-y-1.5"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 min-w-0">
+            <GraduationCap className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isFull ? 'text-emerald-600' : 'text-amber-500'}`} />
+            <div className="min-w-0">
+              <span className="font-semibold text-xs text-slate-800 leading-snug block truncate" title={col.college}>
+                {col.college}
+              </span>
+              {col.division_name && (
+                <span className="text-[10px] text-slate-400 block truncate">
+                  {col.division_name}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <span className="font-bold text-xs text-slate-900">
+              {col.total_attendees}{quota > 0 ? ` / ${quota}` : ''}
+            </span>
+            {quota > 0 ? (
+              <span className={`text-[11px] font-bold ml-1 ${isFull ? 'text-emerald-700' : 'text-amber-700'}`}>
+                ({pct}%)
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 ml-1">
+                (No quota)
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+          <div
+            className={`h-1.5 rounded-full transition-all duration-500 ${isFull ? 'bg-emerald-600' : 'bg-amber-500'}`}
+            style={{ width: `${Math.min(100, pct)}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-400">
+          <span>Admitted: <strong className="text-slate-600">{col.admitted_count}</strong></span>
+          <span>
+            {quota > 0
+              ? `${pct}% of quota (${col.total_attendees}/${quota})`
+              : `${col.total_attendees} registered`}
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   // Generate WhatsApp formatted text: Highest Count First by default
   const generateWhatsAppBreakdown = () => {
@@ -412,11 +509,24 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
                   const admittedPct = div.total_attendees > 0 
                     ? Math.round((div.admitted_count / div.total_attendees) * 100) 
                     : 0;
+                  const divInstitutionsCount = allColleges.filter(
+                    (c) => String(c.division_id) === String(div.id)
+                  ).length;
 
                   return (
                     <div 
-                      key={div.id} 
-                      className="p-4 rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition bg-slate-50/50 hover:bg-white space-y-2"
+                      key={div.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openDivisionModal(div)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openDivisionModal(div);
+                        }
+                      }}
+                      title={`Click to view Dars / Colleges in ${div.name}`}
+                      className="p-4 rounded-2xl border border-slate-200/80 hover:border-emerald-400 hover:shadow-md transition bg-slate-50/50 hover:bg-white space-y-2 cursor-pointer group focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -448,16 +558,22 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-slate-500 pt-1">
                         <span>
                           Quota: <strong className="text-slate-800">{quota > 0 ? `${quota} seats` : 'Not set'}</strong>
                           {quota > 0 && (
                             <span className="ml-1 text-slate-400">({Math.max(0, quota - div.total_attendees)} left)</span>
                           )}
                         </span>
-                        <span>
-                          Admitted: <strong className="text-emerald-700">{div.admitted_count}</strong> ({admittedPct}%)
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <span>
+                            Admitted: <strong className="text-emerald-700">{div.admitted_count}</strong> ({admittedPct}%)
+                          </span>
+                          <span className="inline-flex items-center gap-0.5 text-emerald-700 font-semibold group-hover:translate-x-0.5 transition-transform">
+                            {divInstitutionsCount} Dars / Colleges
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -548,64 +664,267 @@ export default function AnalyticsCharts({ analyticsData, onFilterByDivision }) {
           {/* DARS / DAWA COLLEGE BREAKDOWN */}
           {selectedHierarchyTab === 'college' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {breakdown.byCollege.map((col, idx) => {
-                  const quota = Number(col.allocated_quota) || 0;
-                  const pct = quota > 0 
-                    ? Math.round((col.total_attendees / quota) * 100) 
-                    : 0;
-                  return (
-                    <div 
-                      key={idx} 
-                      className="p-3.5 rounded-xl border border-slate-200/80 bg-white hover:border-emerald-300 transition space-y-1.5"
+              {/* Division Filter & Search Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+                  <div className="relative sm:w-56">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <select
+                      value={selectedCollegeDivisionFilter}
+                      onChange={(e) => setSelectedCollegeDivisionFilter(e.target.value)}
+                      aria-label="Filter Dars / College by Division"
+                      className="w-full pl-8 pr-7 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2 min-w-0">
-                          <GraduationCap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                          <div className="truncate">
-                            <span className="font-semibold text-xs text-slate-800 leading-snug block truncate" title={col.college}>
-                              {col.college}
-                            </span>
-                            {col.division_name && (
-                              <span className="text-[10px] text-slate-400 block truncate">
-                                {col.division_name}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <span className="font-bold text-xs text-slate-900">
-                            {col.total_attendees}{quota > 0 ? ` / ${quota}` : ''}
-                          </span>
-                          {quota > 0 && (
-                            <span className="text-[11px] text-amber-700 font-bold ml-1">
-                              ({pct}%)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div 
-                          className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(100, pct)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Admitted: <strong className="text-slate-600">{col.admitted_count}</strong></span>
-                        <span>
-                          {quota > 0 
-                            ? `${pct}% of quota (${col.total_attendees}/${quota})` 
-                            : `${col.total_attendees} registered`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                      <option value="all">All Divisions ({allColleges.length})</option>
+                      {(breakdown.byDivision || []).map((div) => {
+                        const divInstCount = allColleges.filter(
+                          (c) => String(c.division_id) === String(div.id)
+                        ).length;
+                        return (
+                          <option key={div.id} value={String(div.id)}>
+                            {div.name} ({divInstCount})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={collegeSearch}
+                      onChange={(e) => setCollegeSearch(e.target.value)}
+                      placeholder="Search Dars / College name..."
+                      className="w-full pl-8 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                    />
+                    {collegeSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCollegeSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-2 text-[11px] text-slate-500 font-medium">
+                  <span>
+                    Showing <strong className="text-slate-800">{filteredColleges.length}</strong> of {allColleges.length}
+                  </span>
+                  {(selectedCollegeDivisionFilter !== 'all' || collegeSearch) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCollegeDivisionFilter('all');
+                        setCollegeSearch('');
+                      }}
+                      className="text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {filteredColleges.length === 0 ? (
+                <div className="text-center py-10 text-xs text-slate-500 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200">
+                  No Dars / Colleges match the current filter.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredColleges.map((col, idx) => renderCollegeCard(col, idx))}
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* DIVISION DARS / COLLEGE POP-UP MODAL */}
+      {selectedDivisionModal && (() => {
+        const divColleges = allColleges.filter(
+          (c) => String(c.division_id) === String(selectedDivisionModal.id)
+        );
+        const activeCount = divColleges.filter((c) => Number(c.total_attendees) > 0).length;
+        const zeroCount = divColleges.length - activeCount;
+        const mq = modalSearch.trim().toLowerCase();
+        const modalFiltered = divColleges.filter((c) => {
+          const matchesQuery = !mq || (c.college || '').toLowerCase().includes(mq);
+          const count = Number(c.total_attendees) || 0;
+          const matchesReg =
+            modalRegFilter === 'all' ||
+            (modalRegFilter === 'registered' && count > 0) ||
+            (modalRegFilter === 'zero' && count === 0);
+          return matchesQuery && matchesReg;
+        });
+        const divQuota = Number(selectedDivisionModal.allocated_quota) || 0;
+        const divPct = divQuota > 0
+          ? Math.round((selectedDivisionModal.total_attendees / divQuota) * 100)
+          : 0;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
+            onClick={() => setSelectedDivisionModal(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="division-modal-title"
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-emerald-50/80 via-white to-white space-y-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                      <Building className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 id="division-modal-title" className="font-heading font-bold text-base text-slate-900 truncate">
+                          {selectedDivisionModal.name}
+                        </h4>
+                        {selectedDivisionModal.code && (
+                          <span className="text-[10px] font-mono bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
+                            {selectedDivisionModal.code}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Dars / College Breakdown &bull; {divColleges.length} Institutions
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <div className="text-right hidden sm:block">
+                      <span className="font-bold text-sm text-slate-900">
+                        {selectedDivisionModal.total_attendees}{divQuota > 0 ? ` / ${divQuota}` : ''}
+                      </span>
+                      <span className="text-xs font-bold text-emerald-700 ml-1">
+                        ({divPct}%)
+                      </span>
+                      <span className="block text-[10px] text-slate-400">
+                        Admitted: {selectedDivisionModal.admitted_count}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDivisionModal(null)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                      aria-label="Close modal"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Division Quota Progress Bar */}
+                <div className="w-full bg-slate-200/70 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-emerald-600 h-1.5 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, divPct)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Search & Status Filters */}
+              <div className="px-4 sm:px-6 py-3 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={modalSearch}
+                    onChange={(e) => setModalSearch(e.target.value)}
+                    placeholder={`Search institutions in ${selectedDivisionModal.name}...`}
+                    className="w-full pl-8 pr-8 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                  />
+                  {modalSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setModalSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-xl text-[11px] font-semibold">
+                  {[
+                    { id: 'all', label: `All (${divColleges.length})` },
+                    { id: 'registered', label: `Active (${activeCount})` },
+                    { id: 'zero', label: `0 Reg (${zeroCount})` }
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setModalRegFilter(tab.id)}
+                      className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        modalRegFilter === tab.id
+                          ? 'bg-white text-emerald-700 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                {modalFiltered.length === 0 ? (
+                  <div className="text-center py-10 text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    No institutions found matching your filter in {selectedDivisionModal.name}.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {modalFiltered.map((col, idx) => renderCollegeCard(col, idx))}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-4 sm:px-6 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-500">
+                  Showing <strong className="text-slate-800">{modalFiltered.length}</strong> of {divColleges.length} in {selectedDivisionModal.name}
+                  <span className="sm:hidden ml-2">
+                    &bull; Total: <strong>{selectedDivisionModal.total_attendees}{divQuota > 0 ? `/${divQuota}` : ''}</strong> ({divPct}%)
+                  </span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCollegeDivisionFilter(String(selectedDivisionModal.id));
+                      setCollegeSearch('');
+                      setSelectedHierarchyTab('college');
+                      setSelectedDivisionModal(null);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition cursor-pointer"
+                  >
+                    Open in Dars / College Tab
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDivisionModal(null)}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

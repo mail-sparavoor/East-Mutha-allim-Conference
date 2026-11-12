@@ -151,22 +151,22 @@ router.get('/analytics', requireAdmin, async (req, res) => {
       unitBreakdown = [];
     }
 
-    // 5. Breakdown by Dars / Dawa College with allocated quota
+    // 5. Breakdown by Dars / Dawa College (all configured institutions + allocated quota)
     const collegeBreakdown = await db.prepare(`
       SELECT 
-        a.college,
+        i.id as institution_id,
+        i.name as college,
+        i.code,
+        COALESCE(i.quota, 0) as allocated_quota,
+        d.id as division_id,
+        d.name as division_name,
         COUNT(a.id) as total_attendees,
-        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
-        COALESCE(MAX(i.quota), 0) as allocated_quota,
-        MAX(i.id) as institution_id,
-        MAX(d.name) as division_name
-      FROM attendees a
-      LEFT JOIN institutions i ON (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name)))
+        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count
+      FROM institutions i
       LEFT JOIN divisions d ON i.division_id = d.id
-      WHERE a.college IS NOT NULL AND a.college != ''
-      GROUP BY a.college
-      ORDER BY total_attendees DESC
-      LIMIT 50
+      LEFT JOIN attendees a ON (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.status != 'Cancelled'
+      GROUP BY i.id, i.name, i.code, i.quota, d.id, d.name
+      ORDER BY total_attendees DESC, i.name ASC
     `).all();
 
     // 6. Recent Registrations (latest 10)

@@ -6,6 +6,7 @@ import TicketLookup from './components/TicketLookup';
 import ScannerCheckIn from './components/ScannerCheckIn';
 import AdminDashboard from './components/AdminDashboard';
 import SubAdminDashboard from './components/SubAdminDashboard';
+import DivisionBreakdownPage from './components/DivisionBreakdownPage';
 import AdminLoginModal from './components/AdminLoginModal';
 import { api } from './utils/api';
 
@@ -24,6 +25,16 @@ function getInitialAdminUser() {
   return null;
 }
 
+// Synchronously resolve division slug from /division/:slug path
+function getInitialDivisionSlug() {
+  if (typeof window === 'undefined') return '';
+  const pathname = window.location.pathname;
+  if (pathname.startsWith('/division/')) {
+    return pathname.replace('/division/', '').replace(/\/+$/, '');
+  }
+  return '';
+}
+
 // Synchronously resolve active tab from URL path
 function getInitialTab() {
   if (typeof window === 'undefined') return 'register';
@@ -31,6 +42,7 @@ function getInitialTab() {
   const hash = window.location.hash;
 
   if (pathname.startsWith('/ticket/') || hash.startsWith('#ticket=')) return 'ticket';
+  if (pathname.startsWith('/division/')) return 'division-report';
   if (pathname === '/admin' || pathname.startsWith('/admin/') || hash === '#admin') return 'admin';
   if (pathname === '/subadmin' || pathname.startsWith('/subadmin/') || hash === '#subadmin') return 'subadmin';
   if (pathname === '/checkin' || pathname.startsWith('/checkin/') || hash === '#checkin') return 'checkin';
@@ -43,6 +55,7 @@ export default function App() {
   const [adminUser, setAdminUser] = useState(getInitialAdminUser);
   const [activeTab, setActiveTab] = useState(getInitialTab);
   const [currentAttendee, setCurrentAttendee] = useState(null);
+  const [divisionSlug, setDivisionSlug] = useState(getInitialDivisionSlug);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [eventSettings, setEventSettings] = useState(null);
 
@@ -60,6 +73,16 @@ export default function App() {
   const handlePathRouting = async () => {
     const pathname = window.location.pathname;
     const hash = window.location.hash;
+
+    // Check scoped Division breakdown path /division/:slug
+    if (pathname.startsWith('/division/')) {
+      const slug = pathname.replace('/division/', '').replace(/\/+$/, '');
+      if (slug) {
+        setDivisionSlug(slug);
+        setActiveTab('division-report');
+        return;
+      }
+    }
 
     // Check direct clean path /ticket/:id
     if (pathname.startsWith('/ticket/')) {
@@ -252,6 +275,17 @@ export default function App() {
           <TicketLookup
             onTicketFound={handleTicketFound}
             onGoToRegister={() => {
+              setActiveTab('register');
+              navigate('/');
+            }}
+          />
+        )}
+
+        {activeTab === 'division-report' && (
+          <DivisionBreakdownPage
+            slug={divisionSlug}
+            eventSettings={eventSettings}
+            onBack={() => {
               setActiveTab('register');
               navigate('/');
             }}

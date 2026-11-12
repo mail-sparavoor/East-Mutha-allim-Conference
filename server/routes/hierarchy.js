@@ -1,13 +1,13 @@
 import express from 'express';
-import { db } from '../db.js';
+import { db, ensureUniqueDivisionSlug, sanitizeDivisionSlug } from '../db.js';
 import { requireAdmin } from '../auth.js';
 
 const router = express.Router();
 
-// GET all divisions
+// GET all divisions (public: excludes private share slugs)
 router.get('/divisions', async (req, res) => {
   try {
-    const divisions = await db.prepare('SELECT * FROM divisions ORDER BY name ASC').all();
+    const divisions = await db.prepare('SELECT id, name, code FROM divisions ORDER BY name ASC').all();
     res.json(divisions);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -44,10 +44,10 @@ router.get('/units', async (req, res) => {
   }
 });
 
-// GET full nested hierarchy tree (Divisions with child Institutions)
-router.get('/tree', async (req, res) => {
+// GET full nested hierarchy tree (Admin only: includes private division slugs)
+router.get('/tree', requireAdmin, async (req, res) => {
   try {
-    const divisions = await db.prepare('SELECT * FROM divisions ORDER BY name ASC').all();
+    const divisions = await db.prepare('SELECT id, name, code, slug FROM divisions ORDER BY name ASC').all();
     let institutions = [];
     try {
       institutions = await db.prepare(`
@@ -196,29 +196,179 @@ router.post('/college', async (req, res) => {
   }
 });
 
+// Public Scoped Route: GET /api/hierarchy/division/:slug/breakdown
+// Returns ONLY summary statistics and Dars/College breakdown for the division matching :slug.
+router.get('/division/:slug/breakdown', async (req, res) => {
+  try {
+    const cleanSlug = sanitizeDivisionSlug(req.params.slug);
+    if (!cleanSlug || cleanSlug.length < 3) {
+      return res.status(404).json({ error: 'Invalid or expired division breakdown link.' });
+    }
+
+    const division = await db
+      .prepare('SELECT id, name, code, slug FROM divisions WHERE slug = ?')
+      .get(cleanSlug);
+
+    if (!division) {
+      return res.status(404).json({ error: 'Division breakdown not found. Please check your link or contact the conference administrator.' });
+    }
+
+    const summary = await db.prepare(`
+      SELECT
+        COUNT(*) as total_attendees,
+        SUM(CASE WHEN status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        SUM(CASE WHEN status = 'Registered' THEN 1 ELSE 0 END) as pending_count
+      FROM attendees
+      WHERE division_id = ? AND status != 'Cancelled'
+    `).get(division.id);
+
+    const institutions = await db.prepare(`
+      SELECT
+        i.id as institution_id,
+        i.name as college,
+        i.code,
+        COALESCE(i.quota, 0) as allocated_quota,
+        COUNT(a.id) as total_attendees,
+        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count
+      FROM institutions i
+      LEFT JOIN attendees a ON (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.division_id = i.division_id AND a.status != 'Cancelled'
+      WHERE i.division_id = ?
+      GROUP BY i.id, i.name, i.code, i.quota
+      ORDER BY total_attendees DESC, i.name ASC
+    `).all(division.id);
+
+    const byCollege = (institutions || []).map((row) => {
+      const quota = Number(row.allocated_quota) || 0;
+      const count = Number(row.total_attendees) || 0;
+      const admitted = Number(row.admitted_count) || 0;
+      return {
+        institution_id: row.institution_id,
+        college: row.college,
+        code: row.code,
+        division_id: division.id,
+        division_name: division.name,
+        allocated_quota: quota,
+        total_attendees: count,
+        admitted_count: admitted,
+        remaining: quota > 0 ? Math.max(0, quota - count) : 0,
+        quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0
+      };
+    });
+
+    const allocatedQuota = byCollege.reduce(
+      (sum, item) => sum + (item.allocated_quota > 0 ? item.allocated_quota : 0),
+      0
+    );
+    const totalAttendees = Number(summary?.total_attendees) || 0;
+    const admittedCount = Number(summary?.admitted_count) || 0;
+    const pendingCount = Number(summary?.pending_count) || 0;
+    const activeInstitutions = byCollege.filter((c) => c.total_attendees > 0).length;
+
+    res.json({
+      division: {
+        id: division.id,
+        name: division.name,
+        code: division.code,
+        slug: division.slug
+      },
+      overview: {
+        total_attendees: totalAttendees,
+        admitted_count: admittedCount,
+        pending_count: pendingCount,
+        allocated_quota: allocatedQuota,
+        remaining_quota: allocatedQuota > 0 ? Math.max(0, allocatedQuota - totalAttendees) : 0,
+        quota_percentage: allocatedQuota > 0 ? Math.round((totalAttendees / allocatedQuota) * 100) : 0,
+        admission_rate: totalAttendees > 0 ? Math.round((admittedCount / totalAttendees) * 100) : 0,
+        total_institutions: byCollege.length,
+        active_institutions: activeInstitutions
+      },
+      byCollege
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin routes:
 router.post('/division', requireAdmin, async (req, res) => {
   try {
-    const { name, code } = req.body;
+    const { name, code, slug } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Division name is required' });
     }
-    const stmt = db.prepare('INSERT INTO divisions (name, code) VALUES (?, ?)');
-    const result = await stmt.run(name.trim(), (code || '').trim().toUpperCase());
-    res.json({ id: result.lastInsertRowid, name: name.trim(), code });
+    const cleanName = name.trim();
+    const cleanCode = (code || '').trim().toUpperCase();
+
+    let finalSlug;
+    if (slug && String(slug).trim()) {
+      finalSlug = sanitizeDivisionSlug(slug);
+      if (!finalSlug || finalSlug.length < 3) {
+        return res.status(400).json({ error: 'Custom slug must be at least 3 alphanumeric characters' });
+      }
+      const slugTaken = await db.prepare('SELECT id FROM divisions WHERE slug = ?').get(finalSlug);
+      if (slugTaken) {
+        return res.status(400).json({ error: 'This division slug is already in use' });
+      }
+    } else {
+      finalSlug = await ensureUniqueDivisionSlug(cleanName);
+    }
+
+    const stmt = db.prepare('INSERT INTO divisions (name, code, slug) VALUES (?, ?, ?)');
+    const result = await stmt.run(cleanName, cleanCode, finalSlug);
+    res.json({ id: result.lastInsertRowid, name: cleanName, code: cleanCode, slug: finalSlug });
   } catch (err) {
-    res.status(400).json({ error: err.message.includes('Duplicate') || err.message.includes('UNIQUE') ? 'Division already exists' : err.message });
+    res.status(400).json({ error: err.message.includes('Duplicate') || err.message.includes('UNIQUE') ? 'Division or slug already exists' : err.message });
   }
 });
 
 router.put('/division/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, code } = req.body;
-    await db.prepare('UPDATE divisions SET name = ?, code = ? WHERE id = ?').run(name.trim(), (code || '').trim().toUpperCase(), id);
-    res.json({ success: true, message: 'Division updated' });
+    const { name, code, slug } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Division name is required' });
+    }
+    const cleanName = name.trim();
+    const cleanCode = (code || '').trim().toUpperCase();
+
+    const current = await db.prepare('SELECT id, slug FROM divisions WHERE id = ?').get(id);
+    if (!current) {
+      return res.status(404).json({ error: 'Division not found' });
+    }
+
+    let finalSlug = current.slug;
+    if (slug !== undefined && String(slug).trim() !== '') {
+      finalSlug = sanitizeDivisionSlug(slug);
+      if (!finalSlug || finalSlug.length < 3) {
+        return res.status(400).json({ error: 'Custom slug must be at least 3 alphanumeric characters' });
+      }
+      const conflict = await db.prepare('SELECT id FROM divisions WHERE slug = ? AND id != ?').get(finalSlug, id);
+      if (conflict) {
+        return res.status(400).json({ error: 'This division slug is already assigned to another division' });
+      }
+    } else if (!finalSlug) {
+      finalSlug = await ensureUniqueDivisionSlug(cleanName, id);
+    }
+
+    await db.prepare('UPDATE divisions SET name = ?, code = ?, slug = ? WHERE id = ?').run(cleanName, cleanCode, finalSlug, id);
+    res.json({ success: true, slug: finalSlug, message: 'Division updated' });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/division/:id/regenerate-slug', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const division = await db.prepare('SELECT id, name FROM divisions WHERE id = ?').get(id);
+    if (!division) {
+      return res.status(404).json({ error: 'Division not found' });
+    }
+    const newSlug = await ensureUniqueDivisionSlug(division.name, division.id);
+    await db.prepare('UPDATE divisions SET slug = ? WHERE id = ?').run(newSlug, division.id);
+    res.json({ success: true, slug: newSlug, message: 'Division share link regenerated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -478,7 +628,8 @@ router.post('/bulk-institutions', requireAdmin, async (req, res) => {
       // Check or create division
       let div = await db.prepare('SELECT id FROM divisions WHERE LOWER(name) = LOWER(?)').get(divName);
       if (!div) {
-        const divRes = await db.prepare('INSERT INTO divisions (name, code) VALUES (?, ?)').run(divName, divName.substring(0, 3).toUpperCase());
+        const newSlug = await ensureUniqueDivisionSlug(divName);
+        const divRes = await db.prepare('INSERT INTO divisions (name, code, slug) VALUES (?, ?, ?)').run(divName, divName.substring(0, 3).toUpperCase(), newSlug);
         div = { id: divRes.lastInsertRowid };
         createdDivisions++;
       }
@@ -540,7 +691,8 @@ router.post('/bulk-import', requireAdmin, async (req, res) => {
       // Ensure division exists
       let div = await db.prepare('SELECT id FROM divisions WHERE name = ?').get(divName);
       if (!div) {
-        const divRes = await db.prepare('INSERT INTO divisions (name, code) VALUES (?, ?)').run(divName, divName.substring(0, 3).toUpperCase());
+        const newSlug = await ensureUniqueDivisionSlug(divName);
+        const divRes = await db.prepare('INSERT INTO divisions (name, code, slug) VALUES (?, ?, ?)').run(divName, divName.substring(0, 3).toUpperCase(), newSlug);
         div = { id: divRes.lastInsertRowid };
         addedDivs++;
       }

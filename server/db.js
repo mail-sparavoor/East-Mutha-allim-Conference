@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -111,6 +112,50 @@ export const db = {
   }
 };
 
+const SLUG_KEY_CHARS = '23456789abcdefghjkmnpqrstuvwxyz';
+
+export function slugifyDivisionName(name) {
+  const base = (name || '')
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base || 'division';
+}
+
+export function generateDivisionSlug(name) {
+  const base = slugifyDivisionName(name);
+  let suffix = '';
+  for (let i = 0; i < 6; i++) {
+    suffix += SLUG_KEY_CHARS[crypto.randomInt(0, SLUG_KEY_CHARS.length)];
+  }
+  return `${base}-${suffix}`;
+}
+
+export function sanitizeDivisionSlug(rawSlug) {
+  return (rawSlug || '')
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export async function ensureUniqueDivisionSlug(name, excludeDivisionId = null) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = generateDivisionSlug(name);
+    const existing = excludeDivisionId
+      ? await db.prepare('SELECT id FROM divisions WHERE slug = ? AND id != ?').get(candidate, excludeDivisionId)
+      : await db.prepare('SELECT id FROM divisions WHERE slug = ?').get(candidate);
+    if (!existing) {
+      return candidate;
+    }
+  }
+  return `${slugifyDivisionName(name)}-${crypto.randomBytes(4).toString('hex')}`;
+}
+
 // Function to initialize tables and initial data in MySQL
 export async function initializeSeedData() {
   try {
@@ -179,7 +224,21 @@ export async function initializeSeedData() {
     // Clean up legacy demo accounts
     await db.prepare('DELETE FROM admins WHERE username IN (?, ?)').run('admin', 'subadmin');
 
-    // 3. Divisions check
+    // 3. Divisions check & slug migration
+    try {
+      const divCols = await db.prepare('DESCRIBE divisions').all();
+      if (Array.isArray(divCols) && !divCols.some(c => c.Field === 'slug')) {
+        await pool.query('ALTER TABLE divisions ADD COLUMN slug VARCHAR(150) NULL DEFAULT NULL AFTER code');
+        try {
+          await pool.query('ALTER TABLE divisions ADD UNIQUE INDEX idx_divisions_slug (slug)');
+        } catch (idxErr) {
+          // Ignore if unique index already exists
+        }
+      }
+    } catch (e) {
+      // Ignore if column check fails
+    }
+
     const divCount = await db.prepare('SELECT COUNT(*) as count FROM divisions').get();
     if (!divCount || divCount.count === 0) {
       const defaultDivs = [
@@ -193,8 +252,20 @@ export async function initializeSeedData() {
         ['Kalamassery', 'KLM']
       ];
       for (const [name, code] of defaultDivs) {
-        await db.prepare('INSERT IGNORE INTO divisions (name, code) VALUES (?, ?)').run(name, code);
+        const slug = await ensureUniqueDivisionSlug(name);
+        await db.prepare('INSERT IGNORE INTO divisions (name, code, slug) VALUES (?, ?, ?)').run(name, code, slug);
       }
+    }
+
+    // Backfill slugs for any divisions missing one
+    try {
+      const missingSlugDivs = await db.prepare("SELECT id, name FROM divisions WHERE slug IS NULL OR TRIM(slug) = ''").all();
+      for (const divRow of missingSlugDivs || []) {
+        const newSlug = await ensureUniqueDivisionSlug(divRow.name, divRow.id);
+        await db.prepare('UPDATE divisions SET slug = ? WHERE id = ?').run(newSlug, divRow.id);
+      }
+    } catch (e) {
+      console.warn('Division slug backfill warning:', e.message);
     }
 
     // 4. Institutions under Divisions

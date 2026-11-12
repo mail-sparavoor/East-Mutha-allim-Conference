@@ -100,12 +100,13 @@ router.get('/analytics', requireAdmin, async (req, res) => {
         d.id,
         d.name,
         d.code,
+        d.slug,
         COUNT(a.id) as total_attendees,
         SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
         COALESCE((SELECT SUM(i.quota) FROM institutions i WHERE i.division_id = d.id AND i.quota > 0), 0) as allocated_quota
       FROM divisions d
       LEFT JOIN attendees a ON d.id = a.division_id
-      GROUP BY d.id, d.name, d.code
+      GROUP BY d.id, d.name, d.code, d.slug
       ORDER BY total_attendees DESC, d.name ASC
     `).all();
 

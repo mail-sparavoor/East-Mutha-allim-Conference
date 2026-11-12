@@ -16,7 +16,10 @@ import {
   Download,
   GraduationCap,
   Copy,
-  Search
+  Search,
+  Link2,
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -31,6 +34,8 @@ export default function HierarchyManager({ onHierarchyChanged }) {
   const [modalData, setModalData] = useState({});
   const [modalError, setModalError] = useState('');
   const [modalLoading, setModalLoading] = useState(false);
+  const [copiedDivisionId, setCopiedDivisionId] = useState(null);
+  const [regeneratingSlug, setRegeneratingSlug] = useState(false);
 
   // Bulk import state
   const [bulkText, setBulkText] = useState('');
@@ -73,6 +78,32 @@ export default function HierarchyManager({ onHierarchyChanged }) {
     setExpandedDivisions({});
   };
 
+  const handleCopyDivisionLink = (div) => {
+    if (!div?.slug) return;
+    const url = `${window.location.origin}/division/${div.slug}`;
+    navigator.clipboard.writeText(url);
+    setCopiedDivisionId(div.id);
+    setTimeout(() => setCopiedDivisionId((prev) => (prev === div.id ? null : prev)), 2500);
+  };
+
+  const handleRegenerateSlug = async () => {
+    if (!modalData?.id) return;
+    setRegeneratingSlug(true);
+    setModalError('');
+    try {
+      const res = await api.regenerateDivisionSlug(modalData.id);
+      if (res?.slug) {
+        setModalData((prev) => ({ ...prev, slug: res.slug }));
+        await loadTree();
+        if (onHierarchyChanged) onHierarchyChanged();
+      }
+    } catch (err) {
+      setModalError(err.message || 'Failed to regenerate share link');
+    } finally {
+      setRegeneratingSlug(false);
+    }
+  };
+
   // Add or Edit Division
   const handleSaveDivision = async (e) => {
     e.preventDefault();
@@ -80,10 +111,15 @@ export default function HierarchyManager({ onHierarchyChanged }) {
     setModalLoading(true);
     setModalError('');
     try {
+      const payload = {
+        name: modalData.name,
+        code: modalData.code,
+        slug: modalData.slug
+      };
       if (modalData.id) {
-        await api.updateDivision(modalData.id, { name: modalData.name, code: modalData.code });
+        await api.updateDivision(modalData.id, payload);
       } else {
-        await api.createDivision({ name: modalData.name, code: modalData.code });
+        await api.createDivision(payload);
       }
       setModalType(null);
       await loadTree();
@@ -355,9 +391,49 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                       <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-medium ml-1">
                         {instCount} {instCount === 1 ? 'institution' : 'institutions'}
                       </span>
+                      {div.slug && (
+                        <span
+                          className="hidden lg:inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200/80"
+                          title={`Private breakdown URL: /division/${div.slug}`}
+                        >
+                          /division/{div.slug}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {div.slug && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyDivisionLink(div)}
+                            className="px-2.5 py-1 text-xs font-semibold text-teal-700 bg-white hover:bg-teal-50 border border-teal-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                            title={`Copy shareable breakdown link (/division/${div.slug})`}
+                          >
+                            {copiedDivisionId === div.id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Link2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Copy Link</span>
+                              </>
+                            )}
+                          </button>
+                          <a
+                            href={`/division/${div.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 text-slate-400 hover:text-teal-700 rounded-lg hover:bg-white transition"
+                            title={`Open ${div.name} breakdown page`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </>
+                      )}
+
                       {/* Add Institution under this Division */}
                       <button
                         onClick={() => {
@@ -376,7 +452,7 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                       <button
                         onClick={() => {
                           setModalType('division');
-                          setModalData({ id: div.id, name: div.name, code: div.code });
+                          setModalData({ id: div.id, name: div.name, code: div.code, slug: div.slug || '' });
                           setModalError('');
                         }}
                         className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-white transition cursor-pointer"
@@ -527,6 +603,40 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                   onChange={(e) => setModalData({ ...modalData, code: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono uppercase"
                 />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700">
+                    Share Link Slug
+                  </label>
+                  {modalData.id && (
+                    <button
+                      type="button"
+                      onClick={handleRegenerateSlug}
+                      disabled={regeneratingSlug}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-800 cursor-pointer disabled:opacity-60"
+                      title="Generate a new random link key and invalidate the previous link"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${regeneratingSlug ? 'animate-spin' : ''}`} />
+                      <span>{regeneratingSlug ? 'Regenerating...' : 'Regenerate Key'}</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center rounded-xl border border-slate-300 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500 overflow-hidden bg-slate-50">
+                  <span className="px-2.5 py-2 text-[11px] font-mono text-slate-400 border-r border-slate-200 select-none">
+                    /division/
+                  </span>
+                  <input
+                    type="text"
+                    placeholder={modalData.id ? 'e.g. pulikkal-8k3m2x' : 'Auto-generated if left blank'}
+                    value={modalData.slug || ''}
+                    onChange={(e) => setModalData({ ...modalData, slug: e.target.value })}
+                    className="w-full px-2.5 py-2 bg-white font-mono text-xs text-slate-800 focus:outline-none"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Used for sharing this division&apos;s private attendee breakdown link. Leave blank to auto-generate with a unique key.
+                </p>
               </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button

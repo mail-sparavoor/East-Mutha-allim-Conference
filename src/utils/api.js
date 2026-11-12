@@ -78,7 +78,18 @@ export const api = {
     return fetchApi(url);
   },
   async getHierarchyTree() {
-    return fetchApi('/hierarchy/tree');
+    return fetchApi('/hierarchy/tree', {
+      headers: { ...getAuthHeader() }
+    });
+  },
+  async getDivisionBreakdownBySlug(slug) {
+    return fetchApi(`/hierarchy/division/${encodeURIComponent(slug)}/breakdown`);
+  },
+  async regenerateDivisionSlug(id) {
+    return fetchApi(`/hierarchy/division/${id}/regenerate-slug`, {
+      method: 'POST',
+      headers: { ...getAuthHeader() }
+    });
   },
   async getInstitutions(divisionId) {
     const url = divisionId ? `/hierarchy/institutions?division_id=${divisionId}` : `/hierarchy/institutions`;

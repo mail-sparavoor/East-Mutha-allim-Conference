@@ -42,7 +42,8 @@ DROP TABLE IF EXISTS `divisions`;
 CREATE TABLE `divisions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(150) NOT NULL UNIQUE,
-  `code` VARCHAR(50) NULL DEFAULT NULL
+  `code` VARCHAR(50) NULL DEFAULT NULL,
+  `slug` VARCHAR(150) NULL DEFAULT NULL UNIQUE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

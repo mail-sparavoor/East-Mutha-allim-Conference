@@ -289,6 +289,24 @@ router.get('/division/:slug/breakdown', async (req, res) => {
   }
 });
 
+// Helper to validate and normalize admin-supplied division slugs
+async function resolveAndValidateCustomSlug(rawSlug, excludeDivisionId = null) {
+  const cleanSlug = sanitizeDivisionSlug(rawSlug);
+  if (!cleanSlug || cleanSlug.length < 3) {
+    return { error: 'Custom slug must be at least 3 letters or numbers (a-z, 0-9, -).' };
+  }
+  if (cleanSlug.length > 120) {
+    return { error: 'Custom slug must be 120 characters or fewer.' };
+  }
+  const conflict = excludeDivisionId
+    ? await db.prepare('SELECT id FROM divisions WHERE slug = ? AND id != ?').get(cleanSlug, excludeDivisionId)
+    : await db.prepare('SELECT id FROM divisions WHERE slug = ?').get(cleanSlug);
+  if (conflict) {
+    return { error: 'This division slug is already assigned to another division.' };
+  }
+  return { slug: cleanSlug };
+}
+
 // Admin routes:
 router.post('/division', requireAdmin, async (req, res) => {
   try {
@@ -301,14 +319,9 @@ router.post('/division', requireAdmin, async (req, res) => {
 
     let finalSlug;
     if (slug && String(slug).trim()) {
-      finalSlug = sanitizeDivisionSlug(slug);
-      if (!finalSlug || finalSlug.length < 3) {
-        return res.status(400).json({ error: 'Custom slug must be at least 3 alphanumeric characters' });
-      }
-      const slugTaken = await db.prepare('SELECT id FROM divisions WHERE slug = ?').get(finalSlug);
-      if (slugTaken) {
-        return res.status(400).json({ error: 'This division slug is already in use' });
-      }
+      const checked = await resolveAndValidateCustomSlug(slug);
+      if (checked.error) return res.status(400).json({ error: checked.error });
+      finalSlug = checked.slug;
     } else {
       finalSlug = await ensureUniqueDivisionSlug(cleanName);
     }
@@ -338,20 +351,37 @@ router.put('/division/:id', requireAdmin, async (req, res) => {
 
     let finalSlug = current.slug;
     if (slug !== undefined && String(slug).trim() !== '') {
-      finalSlug = sanitizeDivisionSlug(slug);
-      if (!finalSlug || finalSlug.length < 3) {
-        return res.status(400).json({ error: 'Custom slug must be at least 3 alphanumeric characters' });
-      }
-      const conflict = await db.prepare('SELECT id FROM divisions WHERE slug = ? AND id != ?').get(finalSlug, id);
-      if (conflict) {
-        return res.status(400).json({ error: 'This division slug is already assigned to another division' });
-      }
+      const checked = await resolveAndValidateCustomSlug(slug, id);
+      if (checked.error) return res.status(400).json({ error: checked.error });
+      finalSlug = checked.slug;
     } else if (!finalSlug) {
       finalSlug = await ensureUniqueDivisionSlug(cleanName, id);
     }
 
     await db.prepare('UPDATE divisions SET name = ?, code = ?, slug = ? WHERE id = ?').run(cleanName, cleanCode, finalSlug, id);
     res.json({ success: true, slug: finalSlug, message: 'Division updated' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/division/:id/slug', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slug } = req.body;
+    const current = await db.prepare('SELECT id FROM divisions WHERE id = ?').get(id);
+    if (!current) {
+      return res.status(404).json({ error: 'Division not found' });
+    }
+    if (!slug || !String(slug).trim()) {
+      return res.status(400).json({ error: 'Custom slug cannot be empty' });
+    }
+    const checked = await resolveAndValidateCustomSlug(slug, id);
+    if (checked.error) {
+      return res.status(400).json({ error: checked.error });
+    }
+    await db.prepare('UPDATE divisions SET slug = ? WHERE id = ?').run(checked.slug, id);
+    res.json({ success: true, slug: checked.slug, message: 'Custom division slug saved' });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

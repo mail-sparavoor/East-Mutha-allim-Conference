@@ -21,7 +21,7 @@ import {
   RefreshCw,
   ExternalLink
 } from 'lucide-react';
-import { api } from '../utils/api';
+import { api, normalizeSlug } from '../utils/api';
 
 export default function HierarchyManager({ onHierarchyChanged }) {
   const [tree, setTree] = useState([]);
@@ -108,13 +108,16 @@ export default function HierarchyManager({ onHierarchyChanged }) {
   const handleSaveDivision = async (e) => {
     e.preventDefault();
     if (!modalData.name?.trim()) return setModalError('Division name is required');
+    if (modalData.id && (!modalData.slug?.trim() || normalizeSlug(modalData.slug).length < 3)) {
+      return setModalError('Share Link Slug must be at least 3 letters/numbers (or click Regenerate Key)');
+    }
     setModalLoading(true);
     setModalError('');
     try {
       const payload = {
         name: modalData.name,
         code: modalData.code,
-        slug: modalData.slug
+        slug: modalData.slug?.trim() ? normalizeSlug(modalData.slug) : ''
       };
       if (modalData.id) {
         await api.updateDivision(modalData.id, payload);
@@ -392,12 +395,19 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                         {instCount} {instCount === 1 ? 'institution' : 'institutions'}
                       </span>
                       {div.slug && (
-                        <span
-                          className="hidden lg:inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200/80"
-                          title={`Private breakdown URL: /division/${div.slug}`}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalType('division');
+                            setModalData({ id: div.id, name: div.name, code: div.code, slug: div.slug || '' });
+                            setModalError('');
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] font-mono text-teal-700 bg-teal-50/70 hover:bg-teal-100/80 px-2 py-0.5 rounded-md border border-teal-200/80 transition cursor-pointer"
+                          title={`Click to customize slug (/division/${div.slug})`}
                         >
-                          /division/{div.slug}
-                        </span>
+                          <span>/division/{div.slug}</span>
+                          <Edit2 className="w-2.5 h-2.5 opacity-75" />
+                        </button>
                       )}
                     </div>
 
@@ -605,22 +615,34 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                 />
               </div>
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between gap-2 mb-1">
                   <label className="block font-semibold text-slate-700">
                     Share Link Slug
                   </label>
-                  {modalData.id && (
-                    <button
-                      type="button"
-                      onClick={handleRegenerateSlug}
-                      disabled={regeneratingSlug}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-800 cursor-pointer disabled:opacity-60"
-                      title="Generate a new random link key and invalidate the previous link"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${regeneratingSlug ? 'animate-spin' : ''}`} />
-                      <span>{regeneratingSlug ? 'Regenerating...' : 'Regenerate Key'}</span>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2.5">
+                    {modalData.name?.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setModalData({ ...modalData, slug: normalizeSlug(modalData.name) })}
+                        className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                        title="Use clean division name as slug"
+                      >
+                        Use Name
+                      </button>
+                    )}
+                    {modalData.id && (
+                      <button
+                        type="button"
+                        onClick={handleRegenerateSlug}
+                        disabled={regeneratingSlug}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-800 cursor-pointer disabled:opacity-60"
+                        title="Generate a new random link key and invalidate the previous link"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${regeneratingSlug ? 'animate-spin' : ''}`} />
+                        <span>{regeneratingSlug ? 'Regenerating...' : 'Regenerate Key'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center rounded-xl border border-slate-300 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500 overflow-hidden bg-slate-50">
                   <span className="px-2.5 py-2 text-[11px] font-mono text-slate-400 border-r border-slate-200 select-none">
@@ -634,9 +656,15 @@ export default function HierarchyManager({ onHierarchyChanged }) {
                     className="w-full px-2.5 py-2 bg-white font-mono text-xs text-slate-800 focus:outline-none"
                   />
                 </div>
-                <p className="mt-1 text-[10px] text-slate-500">
-                  Used for sharing this division&apos;s private attendee breakdown link. Leave blank to auto-generate with a unique key.
-                </p>
+                {(modalData.slug || '').trim() ? (
+                  <p className="mt-1 text-[10px] font-mono text-teal-700 break-all">
+                    URL: {typeof window !== 'undefined' ? window.location.origin : ''}/division/{normalizeSlug(modalData.slug) || '...'}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Leave blank when creating a division to auto-generate a secure slug.
+                  </p>
+                )}
               </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button

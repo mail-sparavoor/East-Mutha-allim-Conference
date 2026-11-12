@@ -1,5 +1,15 @@
 const API_BASE = '/api';
 
+export function normalizeSlug(raw) {
+  return (raw || '')
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function getAuthHeader() {
   const token = localStorage.getItem('muthaallim_admin_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -89,6 +99,13 @@ export const api = {
     return fetchApi(`/hierarchy/division/${id}/regenerate-slug`, {
       method: 'POST',
       headers: { ...getAuthHeader() }
+    });
+  },
+  async updateDivisionSlug(id, slug) {
+    return fetchApi(`/hierarchy/division/${id}/slug`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ slug })
     });
   },
   async getInstitutions(divisionId) {

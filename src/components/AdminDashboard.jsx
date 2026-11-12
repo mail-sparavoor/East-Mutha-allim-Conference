@@ -429,6 +429,8 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
               <AnalyticsCharts
                 analyticsData={analyticsData}
                 onFilterByDivision={() => setActiveTab('attendees')}
+                canCustomizeSlug={true}
+                onDivisionUpdated={fetchAnalytics}
               />
             )
           )}

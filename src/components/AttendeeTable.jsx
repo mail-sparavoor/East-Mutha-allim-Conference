@@ -28,10 +28,13 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
   // Filters
   const [search, setSearch] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('');
+  const [institutionFilter, setInstitutionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
   // Dropdown options
   const [divisions, setDivisions] = useState([]);
+  const [institutions, setInstitutions] = useState([]);
+  const [loadingInstitutions, setLoadingInstitutions] = useState(false);
 
   // Edit Modal State
   const [editingAttendee, setEditingAttendee] = useState(null);
@@ -49,6 +52,28 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
     api.getDivisions().then(setDivisions).catch(console.error);
   }, []);
 
+  // Load institutions based on selected division (or all if none selected)
+  useEffect(() => {
+    let active = true;
+    setLoadingInstitutions(true);
+    const fetchPromise = divisionFilter ? api.getInstitutions(divisionFilter) : api.getInstitutions();
+    fetchPromise
+      .then((data) => {
+        if (active) setInstitutions(data || []);
+      })
+      .catch((err) => {
+        console.error('Failed to load institutions:', err);
+        if (active) setInstitutions([]);
+      })
+      .finally(() => {
+        if (active) setLoadingInstitutions(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [divisionFilter]);
+
   // Fetch attendees list
   const loadAttendees = async (page = 1) => {
     try {
@@ -56,6 +81,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
       const res = await api.getAttendees({
         search,
         division_id: divisionFilter,
+        institution_id: institutionFilter,
         status: statusFilter,
         page,
         limit: pagination.limit
@@ -71,7 +97,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
 
   useEffect(() => {
     loadAttendees(1);
-  }, [search, divisionFilter, statusFilter]);
+  }, [search, divisionFilter, institutionFilter, statusFilter]);
 
   // Handle Quick Toggle Check-in
   const handleToggleCheckin = async (attendee) => {
@@ -179,6 +205,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
   const handleExportCSV = () => {
     const params = {};
     if (divisionFilter) params.division_id = divisionFilter;
+    if (institutionFilter) params.institution_id = institutionFilter;
     if (statusFilter) params.status = statusFilter;
     const exportUrl = api.getExportUrl(params);
     window.open(exportUrl, '_blank');
@@ -207,8 +234,13 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
           {/* Division filter */}
           <select
             value={divisionFilter}
-            onChange={(e) => setDivisionFilter(e.target.value)}
-            className="px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+            onChange={(e) => {
+              setDivisionFilter(e.target.value);
+              setInstitutionFilter('');
+            }}
+            className={`px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white font-medium ${
+              divisionFilter ? 'border-emerald-500 bg-emerald-50/40 text-emerald-950 font-semibold ring-1 ring-emerald-500/30' : 'text-slate-800'
+            }`}
           >
             <option value="">All Divisions</option>
             {divisions.map((d) => (
@@ -216,16 +248,59 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
             ))}
           </select>
 
+          {/* Dars / College filter (dependent on Division) */}
+          <select
+            value={institutionFilter}
+            onChange={(e) => setInstitutionFilter(e.target.value)}
+            disabled={loadingInstitutions}
+            aria-label="Filter by Dars or College"
+            className={`px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white font-medium max-w-[240px] sm:max-w-[280px] truncate ${
+              institutionFilter ? 'border-emerald-500 bg-emerald-50/40 text-emerald-950 font-semibold ring-1 ring-emerald-500/30' : 'text-slate-800'
+            }`}
+          >
+            <option value="">
+              {loadingInstitutions
+                ? 'Loading Dars / Colleges...'
+                : divisionFilter
+                ? `All in ${divisions.find(d => String(d.id) === String(divisionFilter))?.name || 'Division'} (${institutions.length})`
+                : `All Dars / Colleges (${institutions.length})`}
+            </option>
+            {institutions.map((inst) => (
+              <option key={inst.id} value={inst.id}>
+                {inst.name} {inst.registered_count !== undefined ? `(${inst.registered_count} reg)` : ''}
+              </option>
+            ))}
+          </select>
+
           {/* Status filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+            className={`px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white font-medium ${
+              statusFilter ? 'border-emerald-500 bg-emerald-50/40 text-emerald-950 font-semibold ring-1 ring-emerald-500/30' : 'text-slate-800'
+            }`}
           >
             <option value="">All Statuses</option>
             <option value="Registered">Registered Only</option>
             <option value="Admitted">Admitted Only</option>
           </select>
+
+          {/* Reset Filters button if any filter is active */}
+          {(divisionFilter || institutionFilter || statusFilter || search) && (
+            <button
+              onClick={() => {
+                setDivisionFilter('');
+                setInstitutionFilter('');
+                setStatusFilter('');
+                setSearch('');
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition"
+              title="Reset all filters"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
 
           {/* Export CSV Button */}
           <button
@@ -238,6 +313,77 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
           </button>
         </div>
       </div>
+
+      {/* Active Filter Badges */}
+      {(divisionFilter || institutionFilter || statusFilter || search) && (
+        <div className="flex flex-wrap items-center gap-2 px-1 text-xs">
+          <span className="text-slate-500 font-semibold flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5 text-slate-400" /> Active Filters:
+          </span>
+          {divisionFilter && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">
+              <span>Division: {divisions.find(d => String(d.id) === String(divisionFilter))?.name || divisionFilter}</span>
+              <button
+                onClick={() => {
+                  setDivisionFilter('');
+                  setInstitutionFilter('');
+                }}
+                className="hover:text-emerald-950 p-0.5"
+                title="Remove division filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {institutionFilter && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">
+              <span>Dars/College: {institutions.find(i => String(i.id) === String(institutionFilter))?.name || institutionFilter}</span>
+              <button
+                onClick={() => setInstitutionFilter('')}
+                className="hover:text-emerald-950 p-0.5"
+                title="Remove college filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {statusFilter && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">
+              <span>Status: {statusFilter}</span>
+              <button
+                onClick={() => setStatusFilter('')}
+                className="hover:text-emerald-950 p-0.5"
+                title="Remove status filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {search && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">
+              <span>Search: &quot;{search}&quot;</span>
+              <button
+                onClick={() => setSearch('')}
+                className="hover:text-emerald-950 p-0.5"
+                title="Clear search"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setDivisionFilter('');
+              setInstitutionFilter('');
+              setStatusFilter('');
+              setSearch('');
+            }}
+            className="text-slate-500 hover:text-rose-600 underline text-[11px] ml-1 font-semibold"
+          >
+            Clear All
+          </button>
+        </div>
+      )}
 
       {/* Main Table */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">

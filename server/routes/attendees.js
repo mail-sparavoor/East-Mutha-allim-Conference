@@ -359,6 +359,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const {
       search,
       division_id,
+      institution_id,
       sector_id,
       unit_id,
       status,
@@ -389,6 +390,15 @@ router.get('/', requireAdmin, async (req, res) => {
       params.push(division_id);
     }
 
+    if (institution_id) {
+      query += ` AND (
+        institution_id = ? OR 
+        college = (SELECT name FROM institutions WHERE id = ?) OR
+        LOWER(college) = (SELECT LOWER(name) FROM institutions WHERE id = ?)
+      )`;
+      params.push(institution_id, institution_id, institution_id);
+    }
+
     if (sector_id) {
       query += ' AND sector_id = ?';
       params.push(sector_id);
@@ -404,9 +414,9 @@ router.get('/', requireAdmin, async (req, res) => {
       params.push(status);
     }
 
-    if (college) {
-      query += ' AND college LIKE ?';
-      params.push(`%${college}%`);
+    if (college && !institution_id) {
+      query += ' AND (LOWER(college) = LOWER(?) OR college LIKE ?)';
+      params.push(college.trim(), `%${college.trim()}%`);
     }
 
     // Total count for pagination
@@ -519,13 +529,24 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 // GET /api/attendees/export/csv - Export attendees to CSV
 router.get('/export/csv', requireAdmin, async (req, res) => {
   try {
-    const { division_id, status } = req.query;
+    const { division_id, institution_id, college, status } = req.query;
     let query = 'SELECT * FROM attendees WHERE 1=1';
     const params = [];
 
     if (division_id) {
       query += ' AND division_id = ?';
       params.push(division_id);
+    }
+    if (institution_id) {
+      query += ` AND (
+        institution_id = ? OR 
+        college = (SELECT name FROM institutions WHERE id = ?) OR
+        LOWER(college) = (SELECT LOWER(name) FROM institutions WHERE id = ?)
+      )`;
+      params.push(institution_id, institution_id, institution_id);
+    } else if (college && college.trim()) {
+      query += ' AND (LOWER(college) = LOWER(?) OR college LIKE ?)';
+      params.push(college.trim(), `%${college.trim()}%`);
     }
     if (status) {
       query += ' AND status = ?';

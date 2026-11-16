@@ -26,11 +26,13 @@ if (!MYSQL_URI) {
 // Clean URI by stripping ?ssl-mode=REQUIRED to avoid mysql2 configuration warning
 const cleanUri = MYSQL_URI ? MYSQL_URI.split('?')[0] : '';
 
-// Create resilient connection pool to Aiven Cloud MySQL with SSL
+// Create resilient high-throughput connection pool to Aiven Cloud MySQL with SSL
 export const pool = mysql.createPool({
   uri: cleanUri || 'mysql://localhost:3306/muthaallim_conference',
   waitForConnections: true,
-  connectionLimit: 15,
+  connectionLimit: 30,
+  maxIdle: 20,
+  idleTimeout: 60000,
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,

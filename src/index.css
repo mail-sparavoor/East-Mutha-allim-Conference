@@ -33,6 +33,15 @@ h1, h2, h3, .font-heading {
   -webkit-backdrop-filter: blur(12px);
 }
 
+/* Auto-advance progress animation for scanner */
+@keyframes shrinkProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+.animate-progress {
+  animation: shrinkProgress 2.5s linear forwards;
+}
+
 /* Print Styles for Ticket Pass */
 @media print {
   body * {

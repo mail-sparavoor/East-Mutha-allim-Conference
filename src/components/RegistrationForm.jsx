@@ -15,7 +15,9 @@ import {
   Search,
   Check,
   Plus,
-  Edit2
+  Edit2,
+  Lock,
+  Mail
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../utils/api';
@@ -23,12 +25,21 @@ import { api } from '../utils/api';
 export default function RegistrationForm({
   onRegistrationSuccess,
   initialMobile = '',
-  eventSettings
+  eventSettings,
+  settingsLoaded = true,
+  onRegistrationStatusChanged,
+  onFindExistingTicket
 }) {
   // Step 1: Name & Mobile verification; Step 2: Location hierarchy & college
   const [step, setStep] = useState(1);
   const [checkingMobile, setCheckingMobile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [closedByServer, setClosedByServer] = useState(false);
+  const [closedNoticeOverride, setClosedNoticeOverride] = useState('');
+
+  const isRegistrationOpen =
+    !closedByServer &&
+    (!eventSettings || String(eventSettings.registration_open).toLowerCase() !== 'false');
 
   // Form State
   const [formData, setFormData] = useState({
@@ -58,8 +69,17 @@ export default function RegistrationForm({
   const mobileInputRef = useRef(null);
   const lastCheckedKeyRef = useRef('');
 
+  // Sync local server-closed override if admin reopens registration
+  useEffect(() => {
+    if (eventSettings && String(eventSettings.registration_open).toLowerCase() !== 'false') {
+      setClosedByServer(false);
+      setClosedNoticeOverride('');
+    }
+  }, [eventSettings?.registration_open]);
+
   // Automatic Check when Name (>=3 chars, English only) and Mobile (10 digits) are entered
   useEffect(() => {
+    if (!isRegistrationOpen || !settingsLoaded) return;
     const cleanMobile = formData.mobile.replace(/\D/g, '');
     const trimmedName = formData.full_name.trim();
 
@@ -107,7 +127,13 @@ export default function RegistrationForm({
             }, 150);
           }
         } catch (err) {
-          setServerError(err.message || 'Error checking registration status.');
+          if (err.registrationClosed || err.status === 403) {
+            setClosedByServer(true);
+            setClosedNoticeOverride(err.message || '');
+            if (onRegistrationStatusChanged) onRegistrationStatusChanged();
+          } else {
+            setServerError(err.message || 'Error checking registration status.');
+          }
         } finally {
           setCheckingMobile(false);
         }
@@ -115,7 +141,7 @@ export default function RegistrationForm({
 
       return () => clearTimeout(timer);
     }
-  }, [formData.full_name, formData.mobile]);
+  }, [formData.full_name, formData.mobile, isRegistrationOpen, settingsLoaded]);
 
   // Load initial divisions
   useEffect(() => {
@@ -246,7 +272,13 @@ export default function RegistrationForm({
         }, 150);
       }
     } catch (err) {
-      setServerError(err.message || 'Error checking registration status.');
+      if (err.registrationClosed || err.status === 403) {
+        setClosedByServer(true);
+        setClosedNoticeOverride(err.message || '');
+        if (onRegistrationStatusChanged) onRegistrationStatusChanged();
+      } else {
+        setServerError(err.message || 'Error checking registration status.');
+      }
     } finally {
       setCheckingMobile(false);
     }
@@ -294,6 +326,12 @@ export default function RegistrationForm({
         onRegistrationSuccess(response.attendee);
       }
     } catch (err) {
+      if (err.registrationClosed || err.status === 403) {
+        setClosedByServer(true);
+        setClosedNoticeOverride(err.message || '');
+        if (onRegistrationStatusChanged) onRegistrationStatusChanged();
+        return;
+      }
       if (err.quotaExceeded || (err.message && err.message.toLowerCase().includes('limit reached'))) {
         setErrors(prev => ({ ...prev, college: err.message || err.error }));
       }
@@ -305,6 +343,124 @@ export default function RegistrationForm({
 
   const selectedDivision = divisions.find(d => String(d.id) === String(formData.division_id));
   const selectedInstitution = institutions.find(i => String(i.id) === String(formData.institution_id));
+
+  // Brief loading state before settings arrive to avoid flashing open form when closed
+  if (!settingsLoaded) {
+    return (
+      <div id="registration-section" className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
+        <div className="bg-white rounded-3xl shadow-2xl shadow-slate-300/60 border border-slate-200/90 overflow-hidden animate-pulse">
+          <div className="bg-slate-800 p-6 sm:p-8 space-y-3">
+            <div className="h-5 w-36 bg-slate-700 rounded-full" />
+            <div className="h-8 w-56 bg-slate-700 rounded-lg" />
+            <div className="h-4 w-72 bg-slate-700/80 rounded" />
+          </div>
+          <div className="p-6 sm:p-8 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="h-12 bg-slate-100 rounded-xl" />
+              <div className="h-12 bg-slate-100 rounded-xl" />
+            </div>
+            <div className="h-11 bg-slate-100 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Registration Closed View
+  if (!isRegistrationOpen) {
+    const closedMessage =
+      closedNoticeOverride ||
+      (eventSettings?.registration_closed_message || '').trim() ||
+      'Online registration for Muthaallim Conference 2026 is currently closed. New delegate registrations are not being accepted at this time.';
+
+    return (
+      <div id="registration-section" className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
+        <div className="bg-white rounded-3xl shadow-2xl shadow-slate-300/60 border border-slate-200/90 overflow-hidden">
+          {/* Closed Header Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 text-white p-5 sm:p-8 relative overflow-hidden">
+            <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 bg-[radial-gradient(#fb7185_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-200 border border-rose-400/35 mb-2.5">
+                <Lock className="w-3.5 h-3.5 text-rose-300" />
+                <span>Registration Closed</span>
+              </div>
+              <h2 className="text-xl sm:text-3xl font-heading font-black tracking-tight text-white">
+                Delegate Registration Is Closed
+              </h2>
+              <p className="text-xs sm:text-sm text-rose-100/85 mt-1.5 max-w-lg leading-relaxed">
+                {eventSettings?.event_subtitle || 'Malappuram East District Muthaallim Conference'}
+              </p>
+            </div>
+          </div>
+
+          {/* Closed Body */}
+          <div className="p-5 sm:p-8 space-y-5">
+            <div className="p-4 sm:p-5 rounded-2xl bg-rose-50/70 border border-rose-200/80 flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-heading font-bold text-sm sm:text-base text-slate-900">
+                  Online Registrations Paused
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  {closedMessage}
+                </p>
+              </div>
+            </div>
+
+            {/* Already Registered Pass Retrieval Box */}
+            {onFindExistingTicket && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                    <Ticket className="w-4 h-4 text-emerald-600" />
+                    <span>Already Registered?</span>
+                  </div>
+                  <p className="text-xs text-emerald-900/85 leading-relaxed">
+                    You can still look up and download your digital conference entry pass using your mobile number or registration ID.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onFindExistingTicket}
+                  className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-heading font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer flex-shrink-0"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>Find Your Ticket Pass</span>
+                </button>
+              </div>
+            )}
+
+            {/* Contact Support Info if configured */}
+            {(eventSettings?.contact_phone || eventSettings?.contact_email) && (
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-500">
+                <span className="font-semibold text-slate-600">Need assistance?</span>
+                {eventSettings?.contact_phone && (
+                  <a
+                    href={`tel:${eventSettings.contact_phone.replace(/\s+/g, '')}`}
+                    className="inline-flex items-center gap-1.5 text-slate-700 hover:text-emerald-700 font-medium transition"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{eventSettings.contact_phone}</span>
+                  </a>
+                )}
+                {eventSettings?.contact_email && (
+                  <a
+                    href={`mailto:${eventSettings.contact_email}`}
+                    className="inline-flex items-center gap-1.5 text-slate-700 hover:text-emerald-700 font-medium transition"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{eventSettings.contact_email}</span>
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id="registration-section" className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">

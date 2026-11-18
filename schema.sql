@@ -125,6 +125,7 @@ INSERT INTO `settings` (`key`, `value`) VALUES
 ('event_date', 'November 15, 2026'),
 ('event_venue', 'Grand Auditorium, Paravoor East'),
 ('registration_open', 'true'),
+('registration_closed_message', ''),
 ('contact_phone', '+91 98460 12345'),
 ('contact_email', 'muthaallim.east@gmail.com')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);

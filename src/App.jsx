@@ -58,6 +58,24 @@ export default function App() {
   const [divisionSlug, setDivisionSlug] = useState(getInitialDivisionSlug);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [eventSettings, setEventSettings] = useState(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  const refreshSettings = async () => {
+    try {
+      const settings = await api.getSettings();
+      setEventSettings(settings);
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    } finally {
+      setSettingsLoaded(true);
+    }
+  };
+
+  const handleSettingsUpdated = (updatedSettings) => {
+    if (!updatedSettings) return;
+    setEventSettings((prev) => ({ ...(prev || {}), ...updatedSettings }));
+    setSettingsLoaded(true);
+  };
 
   // Clean URL navigation helper (uses HTML5 History API without '#')
   const navigate = (path, replace = false) => {
@@ -183,9 +201,7 @@ export default function App() {
     }
 
     // Background load event settings
-    api.getSettings()
-      .then((settings) => setEventSettings(settings))
-      .catch((err) => console.error('Failed to load settings:', err));
+    refreshSettings();
 
     // Listen for browser Back/Forward navigation
     const onPopState = () => {
@@ -253,6 +269,8 @@ export default function App() {
           <LandingPage
             onRegistrationSuccess={handleRegistrationSuccess}
             eventSettings={eventSettings}
+            settingsLoaded={settingsLoaded}
+            onRegistrationStatusChanged={refreshSettings}
             onOpenLookup={() => {
               setActiveTab('ticket-lookup');
               navigate('/lookup');
@@ -273,6 +291,7 @@ export default function App() {
 
         {activeTab === 'ticket-lookup' && (
           <TicketLookup
+            eventSettings={eventSettings}
             onTicketFound={handleTicketFound}
             onGoToRegister={() => {
               setActiveTab('register');
@@ -307,8 +326,11 @@ export default function App() {
           adminUser ? (
             <AdminDashboard
               adminUser={adminUser}
+              eventSettings={eventSettings}
+              onSettingsUpdated={handleSettingsUpdated}
               onLogout={handleAdminLogout}
               onBack={() => {
+                refreshSettings();
                 setActiveTab('register');
                 navigate('/');
               }}
@@ -342,8 +364,11 @@ export default function App() {
           adminUser ? (
             <SubAdminDashboard
               adminUser={adminUser}
+              eventSettings={eventSettings}
+              onSettingsUpdated={handleSettingsUpdated}
               onLogout={handleAdminLogout}
               onBack={() => {
+                refreshSettings();
                 setActiveTab('register');
                 navigate('/');
               }}

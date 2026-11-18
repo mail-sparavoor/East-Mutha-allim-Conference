@@ -6,6 +6,23 @@ import { requireAdmin } from '../auth.js';
 
 const router = express.Router();
 
+// Helper to check if conference registration is currently open
+async function getRegistrationStatus() {
+  const rows = await db.prepare(
+    "SELECT `key`, `value` FROM settings WHERE `key` IN ('registration_open', 'registration_closed_message')"
+  ).all();
+  const map = {};
+  for (const r of rows || []) {
+    map[r.key] = r.value;
+  }
+  const isOpen = map.registration_open === undefined
+    ? true
+    : String(map.registration_open).trim().toLowerCase() !== 'false';
+  const closedMessage = (map.registration_closed_message || '').trim() ||
+    'Online registration is currently closed. If you have already registered, you can still retrieve your digital ticket pass.';
+  return { isOpen, closedMessage };
+}
+
 // Helper to generate a clean, unique registration ID: MEMC1001, MEMC1002, ...
 async function generateRegistrationId() {
   const rows = await db.prepare("SELECT registration_id FROM attendees WHERE registration_id LIKE 'MEMC%'").all();
@@ -58,6 +75,16 @@ router.post('/check', async (req, res) => {
       });
     }
 
+    // Check if new registrations are currently closed
+    const regStatus = await getRegistrationStatus();
+    if (!regStatus.isOpen) {
+      return res.status(403).json({
+        exists: false,
+        registrationClosed: true,
+        error: regStatus.closedMessage
+      });
+    }
+
     return res.json({
       exists: false,
       message: 'Mobile number not registered. Please complete the remaining fields below.'
@@ -80,6 +107,41 @@ router.post('/register', async (req, res) => {
       college,
       notes
     } = req.body;
+
+    // Enforce global Registration Open/Closed setting
+    const regStatus = await getRegistrationStatus();
+    if (!regStatus.isOpen) {
+      // Allow already-registered attendees to recover their existing pass if they submit their mobile
+      const cleanMobileCheck = (mobile || '').replace(/\D/g, '');
+      if (cleanMobileCheck && cleanMobileCheck.length >= 10) {
+        const existingAttendee = await db.prepare('SELECT * FROM attendees WHERE mobile = ?').get(cleanMobileCheck);
+        if (existingAttendee) {
+          const qrPayload = JSON.stringify({
+            regId: existingAttendee.registration_id,
+            name: existingAttendee.full_name,
+            token: existingAttendee.verification_token
+          });
+          const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+            width: 320,
+            margin: 2,
+            color: { dark: '#064e3b', light: '#ffffff' }
+          });
+          return res.status(200).json({
+            alreadyRegistered: true,
+            message: 'You have already registered with this mobile number. Here is your existing ticket pass!',
+            attendee: {
+              ...existingAttendee,
+              qrCode: qrDataUrl
+            }
+          });
+        }
+      }
+
+      return res.status(403).json({
+        error: regStatus.closedMessage,
+        registrationClosed: true
+      });
+    }
 
     // Validation
     if (!full_name || !full_name.trim()) {

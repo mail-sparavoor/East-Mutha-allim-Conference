@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Ticket, Phone, Hash } from 'lucide-react';
 import { api } from '../utils/api';
 
-export default function TicketLookup({ onTicketFound, onGoToRegister }) {
+export default function TicketLookup({ onTicketFound, onGoToRegister, eventSettings }) {
+  const isRegistrationOpen =
+    !eventSettings || String(eventSettings.registration_open).toLowerCase() !== 'false';
   const [identifier, setIdentifier] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -89,15 +91,27 @@ export default function TicketLookup({ onTicketFound, onGoToRegister }) {
         </form>
 
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-500">
-            Haven't registered yet?{' '}
-            <button
-              onClick={onGoToRegister}
-              className="font-semibold text-emerald-700 hover:underline"
-            >
-              Register Now
-            </button>
-          </p>
+          {isRegistrationOpen ? (
+            <p className="text-xs text-slate-500">
+              Haven't registered yet?{' '}
+              <button
+                onClick={onGoToRegister}
+                className="font-semibold text-emerald-700 hover:underline cursor-pointer"
+              >
+                Register Now
+              </button>
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Online registration is currently closed.{' '}
+              <button
+                onClick={onGoToRegister}
+                className="font-semibold text-emerald-700 hover:underline cursor-pointer"
+              >
+                Back to Conference Home
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowRight
+  ArrowRight,
+  Lock,
+  Ticket
 } from 'lucide-react';
 import RegistrationForm from './RegistrationForm';
 
 export default function LandingPage({ 
   onRegistrationSuccess, 
   eventSettings,
+  settingsLoaded = true,
+  onRegistrationStatusChanged,
   onOpenLookup 
 }) {
+  const isRegistrationOpen =
+    !eventSettings || String(eventSettings.registration_open).toLowerCase() !== 'false';
   // Countdown Timer
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
@@ -88,26 +94,44 @@ export default function LandingPage({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
                 </div>
 
-                {/* Register Now Button */}
-                <div className="pt-1 sm:pt-2">
-                  <button
-                    onClick={scrollToRegister}
-                    className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl font-heading font-extrabold text-base sm:text-xl text-white bg-rose-600 hover:bg-rose-700 shadow-xl shadow-rose-600/40 transform hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 group cursor-pointer"
-                  >
-                    <span>Register Now</span>
-                    <ArrowRight className="w-4 sm:w-5 h-4 sm:h-5 group-hover:translate-x-1 transition-transform" />
-                  </button>
+                {/* Register Now Button or Closed State CTA */}
+                <div className="pt-1 sm:pt-2 space-y-2.5">
+                  {isRegistrationOpen ? (
+                    <button
+                      onClick={scrollToRegister}
+                      className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl font-heading font-extrabold text-base sm:text-xl text-white bg-rose-600 hover:bg-rose-700 shadow-xl shadow-rose-600/40 transform hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                    >
+                      <span>Register Now</span>
+                      <ArrowRight className="w-4 sm:w-5 h-4 sm:h-5 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  ) : (
+                    <>
+                      <div className="w-full py-2.5 px-4 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2">
+                        <Lock className="w-4 h-4 text-rose-300 flex-shrink-0" />
+                        <span>Registration Closed</span>
+                      </div>
+                      <button
+                        onClick={onOpenLookup}
+                        className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl font-heading font-extrabold text-sm sm:text-lg text-white bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-600/35 transform hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                      >
+                        <Ticket className="w-4 sm:w-5 h-4 sm:h-5" />
+                        <span>Find Your Ticket Pass</span>
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Retrieve Pass Quick Link */}
-                <div className="text-center pt-0.5">
-                  <button
-                    onClick={onOpenLookup}
-                    className="text-xs font-semibold text-slate-300 hover:text-amber-300 underline underline-offset-4 transition cursor-pointer"
-                  >
-                    Already registered? Find your ticket pass
-                  </button>
-                </div>
+                {isRegistrationOpen && (
+                  <div className="text-center pt-0.5">
+                    <button
+                      onClick={onOpenLookup}
+                      className="text-xs font-semibold text-slate-300 hover:text-amber-300 underline underline-offset-4 transition cursor-pointer"
+                    >
+                      Already registered? Find your ticket pass
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Countdown Timer */}
@@ -140,6 +164,8 @@ export default function LandingPage({
         <RegistrationForm
           onRegistrationSuccess={onRegistrationSuccess}
           eventSettings={eventSettings}
+          settingsLoaded={settingsLoaded}
+          onRegistrationStatusChanged={onRegistrationStatusChanged}
           onFindExistingTicket={onOpenLookup}
         />
       </section>

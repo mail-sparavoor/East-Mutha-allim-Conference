@@ -11,6 +11,7 @@ import {
   Check, 
   Sparkles, 
   Lock, 
+  Unlock,
   ArrowLeft,
   Menu,
   X,
@@ -18,14 +19,24 @@ import {
   TrendingUp,
   UserCheck,
   ExternalLink,
-  Shield
+  Shield,
+  AlertCircle
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AttendeeTable from './AttendeeTable';
 import HierarchyManager from './HierarchyManager';
+import RegistrationStatusModal from './RegistrationStatusModal';
 import { api } from '../utils/api';
 
-export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBack, onSwitchToSubAdmin }) {
+export default function AdminDashboard({
+  adminUser,
+  eventSettings,
+  onSettingsUpdated,
+  onLogout,
+  onViewTicket,
+  onBack,
+  onSwitchToSubAdmin
+}) {
   const [activeTab, setActiveTab] = useState('analytics'); // 'analytics' | 'attendees' | 'hierarchy' | 'settings'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(() => {
@@ -46,11 +57,19 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
     event_date: '',
     event_venue: '',
     registration_open: 'true',
+    registration_closed_message: '',
     contact_phone: '',
-    contact_email: ''
+    contact_email: '',
+    ...(eventSettings || {})
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [regModalOpen, setRegModalOpen] = useState(false);
+  const [togglingRegistration, setTogglingRegistration] = useState(false);
+  const [regStatusFeedback, setRegStatusFeedback] = useState(null); // { type: 'success' | 'error', text: string }
+
+  const isRegistrationOpen =
+    String(settingsData.registration_open ?? 'true').toLowerCase() !== 'false';
 
   const fetchAnalytics = async () => {
     try {
@@ -72,7 +91,8 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
   const fetchSettings = async () => {
     try {
       const s = await api.getSettings();
-      setSettingsData(s);
+      setSettingsData((prev) => ({ ...prev, ...s }));
+      if (onSettingsUpdated) onSettingsUpdated(s);
     } catch (err) {
       console.error('Failed to fetch settings:', err);
     }
@@ -88,13 +108,48 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
     setSavingSettings(true);
     setSettingsSaved(false);
     try {
-      await api.updateSettings(settingsData);
+      const res = await api.updateSettings(settingsData);
+      const updated = res?.settings || settingsData;
+      setSettingsData((prev) => ({ ...prev, ...updated }));
+      if (onSettingsUpdated) onSettingsUpdated(updated);
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch (err) {
       alert(err.message || 'Failed to save settings');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleToggleRegistrationConfirm = async ({ nextOpen, closedMessage }) => {
+    setTogglingRegistration(true);
+    setRegStatusFeedback(null);
+    try {
+      const payload = {
+        registration_open: nextOpen ? 'true' : 'false'
+      };
+      if (!nextOpen) {
+        payload.registration_closed_message = closedMessage;
+      }
+      const res = await api.updateSettings(payload);
+      const updated = res?.settings || { ...settingsData, ...payload };
+      setSettingsData((prev) => ({ ...prev, ...updated }));
+      if (onSettingsUpdated) onSettingsUpdated(updated);
+      setRegModalOpen(false);
+      setRegStatusFeedback({
+        type: 'success',
+        text: nextOpen
+          ? 'Registration has been reopened. Delegates can now register online.'
+          : 'Registration has been closed. New online registrations are now blocked.'
+      });
+      setTimeout(() => setRegStatusFeedback(null), 5000);
+    } catch (err) {
+      setRegStatusFeedback({
+        type: 'error',
+        text: err.message || 'Failed to update registration status.'
+      });
+    } finally {
+      setTogglingRegistration(false);
     }
   };
 
@@ -174,7 +229,7 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
         </div>
 
         {/* Quick Glance Stats Widget in Sidebar */}
-        <div className="p-4 mx-3 my-3 rounded-2xl bg-slate-800/50 border border-slate-800/80 space-y-2">
+        <div className="p-4 mx-3 my-3 rounded-2xl bg-slate-800/50 border border-slate-800/80 space-y-2.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
             Conference Pulse
           </span>
@@ -187,6 +242,60 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
               <span className="text-[10px] text-emerald-400 block">Admitted</span>
               <span className="font-heading font-extrabold text-base text-emerald-400">{totalAdm}</span>
             </div>
+          </div>
+
+          {/* Registration Open/Closed Status & Quick Action */}
+          <div
+            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+              isRegistrationOpen
+                ? 'bg-emerald-950/50 border-emerald-800/60'
+                : 'bg-rose-950/60 border-rose-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  isRegistrationOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                }`}
+              />
+              <div className="leading-tight truncate">
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold">
+                  Registration
+                </span>
+                <span
+                  className={`text-[11px] font-bold ${
+                    isRegistrationOpen ? 'text-emerald-300' : 'text-rose-300'
+                  }`}
+                >
+                  {isRegistrationOpen ? 'Open' : 'Closed'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setRegModalOpen(true);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1 flex-shrink-0 ${
+                isRegistrationOpen
+                  ? 'bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/40'
+                  : 'bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-200 border border-emerald-500/40'
+              }`}
+              title={isRegistrationOpen ? 'Close Registration' : 'Reopen Registration'}
+            >
+              {isRegistrationOpen ? (
+                <>
+                  <Lock className="w-3 h-3" />
+                  <span>Close</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3 h-3" />
+                  <span>Reopen</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -309,6 +418,19 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setRegModalOpen(true)}
+            className={`px-2.5 py-2 rounded-xl text-[11px] font-bold border flex items-center gap-1 transition cursor-pointer ${
+              isRegistrationOpen
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35 hover:bg-emerald-500/25'
+                : 'bg-rose-500/20 text-rose-200 border-rose-500/40 hover:bg-rose-500/30'
+            }`}
+            title={isRegistrationOpen ? 'Registration Open — Tap to Close' : 'Registration Closed — Tap to Reopen'}
+          >
+            {isRegistrationOpen ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+            <span>{isRegistrationOpen ? 'Open' : 'Closed'}</span>
+          </button>
           {onBack && (
             <button
               onClick={onBack}
@@ -370,6 +492,30 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Registration Open/Closed Quick Toggle */}
+            <button
+              type="button"
+              onClick={() => setRegModalOpen(true)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                isRegistrationOpen
+                  ? 'bg-emerald-50 hover:bg-rose-50 text-emerald-800 hover:text-rose-700 border-emerald-200 hover:border-rose-200'
+                  : 'bg-rose-50 hover:bg-emerald-50 text-rose-700 hover:text-emerald-800 border-rose-200 hover:border-emerald-200'
+              }`}
+              title={isRegistrationOpen ? 'Click to close online registration' : 'Click to reopen online registration'}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isRegistrationOpen ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
+                }`}
+              />
+              <span>{isRegistrationOpen ? 'Registration Open' : 'Registration Closed'}</span>
+              {isRegistrationOpen ? (
+                <Lock className="w-3.5 h-3.5 opacity-70" />
+              ) : (
+                <Unlock className="w-3.5 h-3.5 opacity-70" />
+              )}
+            </button>
+
             {onSwitchToSubAdmin && (
               <button
                 onClick={onSwitchToSubAdmin}
@@ -414,6 +560,57 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
 
         {/* Content Body */}
         <main className="p-3.5 sm:p-6 lg:p-8 space-y-6 flex-1">
+          {/* Live Feedback Banner for Registration Status Toggle */}
+          {regStatusFeedback && (
+            <div
+              className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 animate-fadeIn ${
+                regStatusFeedback.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {regStatusFeedback.type === 'success' ? (
+                  <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                )}
+                <span>{regStatusFeedback.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRegStatusFeedback(null)}
+                className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Persistent Warning Strip when Registration is Closed */}
+          {!isRegistrationOpen && (
+            <div className="p-3.5 sm:px-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-xs">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold block text-rose-950">Online Registration is Currently Closed</span>
+                  <span className="text-rose-700">
+                    New delegate sign-ups are paused. Already-registered attendees can still access their passes.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRegModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Reopen Registration</span>
+              </button>
+            </div>
+          )}
           {activeTab === 'analytics' && (
             analyticsError ? (
               <div className="bg-white p-8 rounded-3xl border border-rose-200 text-center space-y-3">
@@ -450,6 +647,98 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
 
           {activeTab === 'settings' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Registration Status Control Card (Full Width) */}
+              <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 border ${
+                        isRegistrationOpen
+                          ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                          : 'bg-rose-50 text-rose-600 border-rose-200'
+                      }`}
+                    >
+                      {isRegistrationOpen ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-heading font-bold text-base text-slate-900">
+                          Registration Portal Control
+                        </h3>
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            isRegistrationOpen
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isRegistrationOpen ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
+                            }`}
+                          />
+                          {isRegistrationOpen ? 'OPEN' : 'CLOSED'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {isRegistrationOpen
+                          ? 'Online registration is active. New delegates can register and receive digital entry passes.'
+                          : 'Online registration is closed. New submissions are blocked while existing delegates can still retrieve their passes.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setRegModalOpen(true)}
+                    className={`px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer flex-shrink-0 ${
+                      isRegistrationOpen
+                        ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                    }`}
+                  >
+                    {isRegistrationOpen ? (
+                      <>
+                        <Lock className="w-4 h-4" />
+                        <span>Close Registration</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-4 h-4" />
+                        <span>Reopen Registration</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Custom Closed Notice Message Editor */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Closed Registration Notice Message <span className="text-slate-400 font-normal">(Shown on public site when closed)</span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <input
+                      type="text"
+                      value={settingsData.registration_closed_message || ''}
+                      onChange={(e) =>
+                        setSettingsData({ ...settingsData, registration_closed_message: e.target.value })
+                      }
+                      placeholder="Leave empty for default message, or enter a custom announcement..."
+                      className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveSettings}
+                      disabled={savingSettings}
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-70 whitespace-nowrap"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save Notice</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Conference General Settings */}
               <div className="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
                 <div>
@@ -563,6 +852,16 @@ export default function AdminDashboard({ adminUser, onLogout, onViewTicket, onBa
           )}
         </main>
       </div>
+
+      {/* Registration Open/Close Confirmation Modal */}
+      <RegistrationStatusModal
+        isOpen={regModalOpen}
+        currentlyOpen={isRegistrationOpen}
+        initialClosedMessage={settingsData.registration_closed_message || ''}
+        onClose={() => !togglingRegistration && setRegModalOpen(false)}
+        onConfirm={handleToggleRegistrationConfirm}
+        loading={togglingRegistration}
+      />
     </div>
   );
 }

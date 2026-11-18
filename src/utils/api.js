@@ -56,7 +56,13 @@ async function fetchApi(endpoint, options = {}) {
 
   if (!res.ok) {
     const errorMsg = data?.error || data?.message || `Request failed with status ${res.status}`;
-    throw new Error(errorMsg);
+    const err = new Error(errorMsg);
+    err.status = res.status;
+    err.data = data;
+    if (data?.registrationClosed) err.registrationClosed = true;
+    if (data?.quotaExceeded) err.quotaExceeded = true;
+    if (data?.quotaNotSet) err.quotaNotSet = true;
+    throw err;
   }
 
   return data;

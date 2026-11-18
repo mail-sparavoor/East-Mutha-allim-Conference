@@ -4,14 +4,23 @@ import { requireAdmin } from '../auth.js';
 
 const router = express.Router();
 
+// Helper to load settings map with safe defaults
+async function loadSettingsMap() {
+  const rows = await db.prepare('SELECT `key`, `value` FROM settings').all();
+  const settings = {
+    registration_open: 'true',
+    registration_closed_message: ''
+  };
+  for (const row of rows) {
+    settings[row.key] = row.value;
+  }
+  return settings;
+}
+
 // GET /api/settings - Public event settings
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.prepare('SELECT `key`, `value` FROM settings').all();
-    const settings = {};
-    for (const row of rows) {
-      settings[row.key] = row.value;
-    }
+    const settings = await loadSettingsMap();
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -21,19 +30,46 @@ router.get('/', async (req, res) => {
 // POST /api/settings - Admin update settings
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const updates = req.body;
+    const updates = req.body || {};
+    const prevSettings = await loadSettingsMap();
+
     const upsertStmt = db.prepare(`
       INSERT INTO settings (\`key\`, \`value\`) VALUES (?, ?)
       ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)
     `);
 
+    let nextRegOpen = null;
+
     for (const [key, value] of Object.entries(updates)) {
       if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-        await upsertStmt.run(key, String(value));
+        if (key === 'registration_open') {
+          const normalized =
+            value === true || String(value).trim().toLowerCase() === 'true' ? 'true' : 'false';
+          await upsertStmt.run(key, normalized);
+          nextRegOpen = normalized;
+        } else {
+          await upsertStmt.run(key, String(value));
+        }
       }
     }
 
-    res.json({ success: true, message: 'Settings updated successfully' });
+    // Record audit log when registration status changes
+    if (nextRegOpen !== null && nextRegOpen !== prevSettings.registration_open) {
+      try {
+        const action = nextRegOpen === 'true' ? 'REGISTRATION_REOPENED' : 'REGISTRATION_CLOSED';
+        const details = `Registration ${nextRegOpen === 'true' ? 'reopened' : 'closed'} by ${req.admin?.username || 'admin'} (${req.admin?.role || 'admin'})`;
+        await db.prepare('INSERT INTO audit_logs (action, details) VALUES (?, ?)').run(action, details);
+      } catch (auditErr) {
+        // Non-fatal if audit_logs table is unavailable
+      }
+    }
+
+    const updatedSettings = await loadSettingsMap();
+    res.json({
+      success: true,
+      message: 'Settings updated successfully',
+      settings: updatedSettings
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -196,8 +196,13 @@ export async function initializeSeedData() {
       await insertSetting.run('event_date', '19 November 2026, Thursday');
       await insertSetting.run('event_venue', 'പുളിക്കൽ, ഐക്കരപ്പടി (Pulikkal, Aikkarappadi)');
       await insertSetting.run('registration_open', 'true');
+      await insertSetting.run('registration_closed_message', '');
       await insertSetting.run('contact_phone', '+91 98460 12345');
       await insertSetting.run('contact_email', 'muthaallim.east@gmail.com');
+    } else {
+      // Ensure registration control keys exist on already-seeded databases without overwriting admin choices
+      await db.prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)').run('registration_open', 'true');
+      await db.prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)').run('registration_closed_message', '');
     }
 
     // 2. Admin accounts check (Super Admin: emcadmin / emcsadmin, Sub-Admin: cmsadmin / passcmseast)

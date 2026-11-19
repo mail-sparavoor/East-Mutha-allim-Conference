@@ -17,7 +17,8 @@ import {
   Plus,
   Edit2,
   Lock,
-  Mail
+  Mail,
+  Zap
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../utils/api';
@@ -28,7 +29,8 @@ export default function RegistrationForm({
   eventSettings,
   settingsLoaded = true,
   onRegistrationStatusChanged,
-  onFindExistingTicket
+  onFindExistingTicket,
+  onGoToSpotRegistration
 }) {
   // Step 1: Name & Mobile verification; Step 2: Location hierarchy & college
   const [step, setStep] = useState(1);
@@ -40,6 +42,9 @@ export default function RegistrationForm({
   const isRegistrationOpen =
     !closedByServer &&
     (!eventSettings || String(eventSettings.registration_open).toLowerCase() !== 'false');
+
+  const isSpotRegistrationOpen =
+    !eventSettings || String(eventSettings.spot_registration_open).toLowerCase() !== 'false';
 
   // Form State
   const [formData, setFormData] = useState({
@@ -408,6 +413,30 @@ export default function RegistrationForm({
                 </p>
               </div>
             </div>
+
+            {/* Spot Registration Active Box */}
+            {isSpotRegistrationOpen && onGoToSpotRegistration && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/80 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-xs font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-amber-600" />
+                    <span>On-Site Spot Registration Active</span>
+                  </div>
+                  <p className="text-xs text-amber-950/85 leading-relaxed">
+                    Spot registration is open at the venue for delegates seeking immediate admission.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onGoToSpotRegistration}
+                  className="px-5 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-heading font-bold shadow-md shadow-amber-600/20 transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer flex-shrink-0"
+                >
+                  <Zap className="w-4 h-4 text-amber-200" />
+                  <span>Go to Spot Registration</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* Already Registered Pass Retrieval Box */}
             {onFindExistingTicket && (

@@ -197,12 +197,16 @@ export async function initializeSeedData() {
       await insertSetting.run('event_venue', 'പുളിക്കൽ, ഐക്കരപ്പടി (Pulikkal, Aikkarappadi)');
       await insertSetting.run('registration_open', 'true');
       await insertSetting.run('registration_closed_message', '');
+      await insertSetting.run('spot_registration_open', 'true');
+      await insertSetting.run('spot_registration_closed_message', '');
       await insertSetting.run('contact_phone', '+91 98460 12345');
       await insertSetting.run('contact_email', 'muthaallim.east@gmail.com');
     } else {
       // Ensure registration control keys exist on already-seeded databases without overwriting admin choices
       await db.prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)').run('registration_open', 'true');
       await db.prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)').run('registration_closed_message', '');
+      await db.prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)').run('spot_registration_open', 'true');
+      await db.prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)').run('spot_registration_closed_message', '');
     }
 
     // 2. Admin accounts check (Super Admin: emcadmin / emcsadmin, Sub-Admin: cmsadmin / passcmseast)
@@ -305,8 +309,17 @@ export async function initializeSeedData() {
       if (Array.isArray(attendeeCols) && !attendeeCols.some(c => c.Field === 'institution_id')) {
         await pool.query('ALTER TABLE attendees ADD COLUMN institution_id INT NULL DEFAULT NULL AFTER division_name');
       }
+      // Ensure attendees table has registration_type column
+      if (Array.isArray(attendeeCols) && !attendeeCols.some(c => c.Field === 'registration_type')) {
+        await pool.query("ALTER TABLE attendees ADD COLUMN registration_type VARCHAR(20) NOT NULL DEFAULT 'normal' AFTER status");
+        try {
+          await pool.query("ALTER TABLE attendees ADD INDEX idx_attendees_reg_type (registration_type)");
+        } catch (_) {}
+      }
+      // Guarantee all existing attendees have registration_type = 'normal'
+      await db.prepare("UPDATE attendees SET registration_type = 'normal' WHERE registration_type IS NULL OR registration_type = ''").run();
     } catch (e) {
-      // Ignore if column check fails or already present
+      console.warn('Attendee schema verification warning:', e.message);
     }
 
     // Seed default institutions if empty

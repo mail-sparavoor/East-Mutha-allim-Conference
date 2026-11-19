@@ -6,7 +6,7 @@ const router = express.Router();
 const SELECT_FIELDS = `
   id, registration_id, full_name, mobile,
   division_name, sector_name, unit_name, college,
-  verification_token, status, check_in_time, check_in_by
+  verification_token, status, registration_type, check_in_time, check_in_by
 `;
 
 // Helper to parse QR content (JSON, URL, registration_id, mobile, or token)
@@ -35,8 +35,8 @@ function parseScanInput(raw) {
     clean = clean.split('ticket=')[1].split('&')[0];
   }
 
-  // Direct registration ID (e.g. MEMC1001)
-  if (/^MEMC\d+$/i.test(clean)) {
+  // Direct registration ID (e.g. MEMC1001 or SPOT1001)
+  if (/^(MEMC|SPOT|MEMCS)\d+$/i.test(clean)) {
     return { token: null, regId: clean.toUpperCase(), mobile: null, raw: clean };
   }
 

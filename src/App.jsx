@@ -6,6 +6,7 @@ import TicketLookup from './components/TicketLookup';
 import ScannerCheckIn from './components/ScannerCheckIn';
 import AdminDashboard from './components/AdminDashboard';
 import SubAdminDashboard from './components/SubAdminDashboard';
+import SpotRegistrationPage from './components/SpotRegistrationPage';
 import DivisionBreakdownPage from './components/DivisionBreakdownPage';
 import AdminLoginModal from './components/AdminLoginModal';
 import { api } from './utils/api';
@@ -42,6 +43,14 @@ function getInitialTab() {
   const hash = window.location.hash;
 
   if (pathname.startsWith('/ticket/') || hash.startsWith('#ticket=')) return 'ticket';
+  if (
+    pathname === '/spot-registration' ||
+    pathname === '/spot' ||
+    pathname.startsWith('/spot-registration/') ||
+    pathname.startsWith('/spot/') ||
+    hash === '#spot' ||
+    hash === '#spot-registration'
+  ) return 'spot-registration';
   if (pathname.startsWith('/division/')) return 'division-report';
   if (pathname === '/admin' || pathname.startsWith('/admin/') || hash === '#admin') return 'admin';
   if (pathname === '/subadmin' || pathname.startsWith('/subadmin/') || hash === '#subadmin') return 'subadmin';
@@ -117,6 +126,22 @@ export default function App() {
       }
     }
 
+    // Check /spot-registration or /spot
+    if (
+      pathname === '/spot-registration' ||
+      pathname === '/spot' ||
+      pathname.startsWith('/spot-registration/') ||
+      pathname.startsWith('/spot/') ||
+      hash === '#spot' ||
+      hash === '#spot-registration'
+    ) {
+      if (hash === '#spot' || hash === '#spot-registration') {
+        navigate('/spot-registration', true);
+      }
+      setActiveTab('spot-registration');
+      return;
+    }
+
     // Check legacy hash fallback #ticket=... and migrate to clean URL
     if (hash.startsWith('#ticket=')) {
       const ticketId = hash.replace('#ticket=', '');
@@ -164,6 +189,7 @@ export default function App() {
     if (hash === '#admin') navigate('/admin', true);
     else if (hash === '#subadmin') navigate('/subadmin', true);
     else if (hash === '#checkin') navigate('/checkin', true);
+    else if (hash === '#spot' || hash === '#spot-registration') navigate('/spot-registration', true);
     else if (hash.startsWith('#ticket=')) {
       const ticketId = hash.replace('#ticket=', '');
       navigate(`/ticket/${ticketId}`, true);
@@ -274,6 +300,26 @@ export default function App() {
             onOpenLookup={() => {
               setActiveTab('ticket-lookup');
               navigate('/lookup');
+            }}
+            onGoToSpotRegistration={() => {
+              setActiveTab('spot-registration');
+              navigate('/spot-registration');
+            }}
+          />
+        )}
+
+        {activeTab === 'spot-registration' && (
+          <SpotRegistrationPage
+            onRegistrationSuccess={handleRegistrationSuccess}
+            eventSettings={eventSettings}
+            onOpenLookup={() => {
+              setActiveTab('ticket-lookup');
+              navigate('/lookup');
+            }}
+            onBack={() => {
+              refreshSettings();
+              setActiveTab('register');
+              navigate('/');
             }}
           />
         )}

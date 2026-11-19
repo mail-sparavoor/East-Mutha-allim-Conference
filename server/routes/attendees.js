@@ -6,24 +6,32 @@ import { requireAdmin } from '../auth.js';
 
 const router = express.Router();
 
-// Helper to check if conference registration is currently open
-async function getRegistrationStatus() {
+// Helper to check if conference registration is currently open (normal or spot)
+async function getRegistrationStatus(type = 'normal') {
+  const isSpot = type === 'spot';
+  const openKey = isSpot ? 'spot_registration_open' : 'registration_open';
+  const msgKey = isSpot ? 'spot_registration_closed_message' : 'registration_closed_message';
+
   const rows = await db.prepare(
-    "SELECT `key`, `value` FROM settings WHERE `key` IN ('registration_open', 'registration_closed_message')"
-  ).all();
+    "SELECT `key`, `value` FROM settings WHERE `key` IN (?, ?)"
+  ).all(openKey, msgKey);
+
   const map = {};
   for (const r of rows || []) {
     map[r.key] = r.value;
   }
-  const isOpen = map.registration_open === undefined
+
+  const isOpen = map[openKey] === undefined
     ? true
-    : String(map.registration_open).trim().toLowerCase() !== 'false';
-  const closedMessage = (map.registration_closed_message || '').trim() ||
-    'Online registration is currently closed. If you have already registered, you can still retrieve your digital ticket pass.';
+    : String(map[openKey]).trim().toLowerCase() !== 'false';
+  const defaultMsg = isSpot
+    ? 'Spot registration is currently closed. If you have already registered, you can still retrieve your digital pass.'
+    : 'Online registration is currently closed. If you have already registered, you can still retrieve your digital ticket pass.';
+  const closedMessage = (map[msgKey] || '').trim() || defaultMsg;
   return { isOpen, closedMessage };
 }
 
-// Helper to generate a clean, unique registration ID: MEMC1001, MEMC1002, ...
+// Helper to generate a clean, unique normal registration ID: MEMC1001, MEMC1002, ...
 async function generateRegistrationId() {
   const rows = await db.prepare("SELECT registration_id FROM attendees WHERE registration_id LIKE 'MEMC%'").all();
   let maxNum = 1000;
@@ -34,16 +42,35 @@ async function generateRegistrationId() {
     }
   }
   if (maxNum === 1000) {
-    const countRow = await db.prepare('SELECT COUNT(*) as count FROM attendees').get();
+    const countRow = await db.prepare("SELECT COUNT(*) as count FROM attendees WHERE registration_type != 'spot' OR registration_type IS NULL").get();
     maxNum = 1000 + (countRow ? Number(countRow.count) : 0);
   }
   return `MEMC${maxNum + 1}`;
 }
 
+// Helper to generate a clean, unique spot registration ID: SPOT1001, SPOT1002, ...
+async function generateSpotRegistrationId() {
+  const rows = await db.prepare("SELECT registration_id FROM attendees WHERE registration_id LIKE 'SPOT%'").all();
+  let maxNum = 1000;
+  for (const r of rows) {
+    const numPart = parseInt(r.registration_id.replace(/^SPOT/i, ''), 10);
+    if (!isNaN(numPart) && numPart > maxNum) {
+      maxNum = numPart;
+    }
+  }
+  if (maxNum === 1000) {
+    const countRow = await db.prepare("SELECT COUNT(*) as count FROM attendees WHERE registration_type = 'spot'").get();
+    maxNum = 1000 + (countRow ? Number(countRow.count) : 0);
+  }
+  return `SPOT${maxNum + 1}`;
+}
+
 // POST /api/attendees/check - Check if attendee is already registered by mobile number
 router.post('/check', async (req, res) => {
   try {
-    const { mobile, full_name } = req.body;
+    const { mobile, full_name, registration_type = 'normal' } = req.body;
+    const isSpot = registration_type === 'spot';
+
     if (full_name && full_name.trim() && !/^[a-zA-Z\s.'-]+$/.test(full_name.trim())) {
       return res.status(400).json({ error: 'Please enter your name in English text only (A-Z).' });
     }
@@ -65,9 +92,10 @@ router.post('/check', async (req, res) => {
         color: { dark: '#064e3b', light: '#ffffff' }
       });
 
+      const passLabel = existing.registration_type === 'spot' ? 'Spot Admission pass' : 'entry ticket pass';
       return res.json({
         exists: true,
-        message: `Welcome back, ${existing.full_name}! You are already registered. Here is your entry ticket.`,
+        message: `Welcome back, ${existing.full_name}! You are already registered (${existing.registration_id}). Here is your ${passLabel}.`,
         attendee: {
           ...existing,
           qrCode: qrDataUrl
@@ -75,8 +103,8 @@ router.post('/check', async (req, res) => {
       });
     }
 
-    // Check if new registrations are currently closed
-    const regStatus = await getRegistrationStatus();
+    // Check if new registrations are currently open for this registration type
+    const regStatus = await getRegistrationStatus(isSpot ? 'spot' : 'normal');
     if (!regStatus.isOpen) {
       return res.status(403).json({
         exists: false,
@@ -239,6 +267,7 @@ router.post('/register', async (req, res) => {
       FROM attendees 
       WHERE (institution_id = ? OR (institution_id IS NULL AND LOWER(college) = LOWER(?)))
         AND status != 'Cancelled'
+        AND (registration_type = 'normal' OR registration_type IS NULL)
     `).get(targetInst.id, targetInst.name);
 
     const currentCount = regCountRow ? Number(regCountRow.count) : 0;
@@ -265,8 +294,8 @@ router.post('/register', async (req, res) => {
         sector_id, sector_name,
         unit_id, unit_name,
         college, verification_token,
-        status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Registered', ?)
+        status, registration_type, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Registered', 'normal', ?)
     `);
 
     const result = await insertStmt.run(
@@ -313,6 +342,167 @@ router.post('/register', async (req, res) => {
     });
   } catch (err) {
     console.error('Registration error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/attendees/spot-register - Public attendee spot registration
+router.post('/spot-register', async (req, res) => {
+  try {
+    const {
+      full_name,
+      mobile,
+      division_id,
+      institution_id,
+      sector_id,
+      unit_id,
+      college,
+      notes
+    } = req.body;
+
+    // Check spot registration open/closed status
+    const regStatus = await getRegistrationStatus('spot');
+    if (!regStatus.isOpen) {
+      return res.status(403).json({
+        error: regStatus.closedMessage,
+        registrationClosed: true
+      });
+    }
+
+    // Validation
+    if (!full_name || !full_name.trim()) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    // English text only validation for Full Name
+    if (!/^[a-zA-Z\s.'-]+$/.test(full_name.trim())) {
+      return res.status(400).json({ error: 'Full name must be filled out in English text only (A-Z).' });
+    }
+
+    const cleanMobile = (mobile || '').replace(/\D/g, '');
+    if (!cleanMobile || cleanMobile.length < 10) {
+      return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
+    }
+
+    if (!division_id) {
+      return res.status(400).json({ error: 'Division selection is required' });
+    }
+
+    // Resolve Division
+    const divRow = await db.prepare('SELECT * FROM divisions WHERE id = ?').get(division_id);
+    if (!divRow) {
+      return res.status(400).json({ error: 'Please select a valid Division' });
+    }
+
+    // Resolve Institution under this Division
+    let resolvedInstitutionId = null;
+    let finalCollege = (college || '').trim();
+
+    if (institution_id) {
+      const instRow = await db.prepare('SELECT * FROM institutions WHERE id = ? AND division_id = ?').get(institution_id, divRow.id);
+      if (instRow) {
+        resolvedInstitutionId = instRow.id;
+        finalCollege = instRow.name;
+      }
+    }
+
+    if (!finalCollege && !resolvedInstitutionId) {
+      return res.status(400).json({ error: 'Please select an academic institution / Dars from the list' });
+    }
+
+    if (!resolvedInstitutionId && finalCollege) {
+      const instByName = await db.prepare('SELECT * FROM institutions WHERE division_id = ? AND LOWER(name) = LOWER(?)').get(divRow.id, finalCollege);
+      if (instByName) {
+        resolvedInstitutionId = instByName.id;
+        finalCollege = instByName.name;
+      }
+    }
+
+    // Check if duplicate registration by same mobile number
+    const existing = await db.prepare('SELECT * FROM attendees WHERE mobile = ?').get(cleanMobile);
+    if (existing) {
+      const qrPayload = JSON.stringify({
+        regId: existing.registration_id,
+        name: existing.full_name,
+        token: existing.verification_token
+      });
+      const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+        width: 320,
+        margin: 2,
+        color: { dark: '#064e3b', light: '#ffffff' }
+      });
+
+      return res.status(200).json({
+        alreadyRegistered: true,
+        message: `You have already registered with this mobile number (${existing.registration_id}). Here is your ticket pass!`,
+        attendee: {
+          ...existing,
+          qrCode: qrDataUrl
+        }
+      });
+    }
+
+    const secRow = sector_id ? await db.prepare('SELECT * FROM sectors WHERE id = ?').get(sector_id) : null;
+    const unitRow = unit_id ? await db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) : null;
+
+    const registration_id = await generateSpotRegistrationId();
+    const verification_token = 'vtok_spot_' + crypto.randomBytes(10).toString('hex');
+
+    const insertStmt = db.prepare(`
+      INSERT INTO attendees (
+        registration_id, full_name, mobile,
+        division_id, division_name, institution_id,
+        sector_id, sector_name,
+        unit_id, unit_name,
+        college, verification_token,
+        status, registration_type, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Registered', 'spot', ?)
+    `);
+
+    const result = await insertStmt.run(
+      registration_id,
+      full_name.trim(),
+      cleanMobile,
+      divRow.id,
+      divRow.name,
+      resolvedInstitutionId,
+      secRow ? secRow.id : 0,
+      secRow ? secRow.name : '',
+      unitRow ? unitRow.id : 0,
+      unitRow ? unitRow.name : '',
+      finalCollege,
+      verification_token,
+      (notes || '').trim()
+    );
+
+    const newAttendee = await db.prepare('SELECT * FROM attendees WHERE id = ?').get(result.lastInsertRowid);
+
+    // Generate high quality QR code data URL
+    const qrPayload = JSON.stringify({
+      regId: newAttendee.registration_id,
+      name: newAttendee.full_name,
+      token: newAttendee.verification_token
+    });
+
+    const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+      width: 350,
+      margin: 2,
+      color: {
+        dark: '#064e3b',
+        light: '#ffffff'
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Spot registration successful! Your digital spot admission pass has been generated.',
+      attendee: {
+        ...newAttendee,
+        qrCode: qrDataUrl
+      }
+    });
+  } catch (err) {
+    console.error('Spot registration error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -426,6 +616,7 @@ router.get('/', requireAdmin, async (req, res) => {
       unit_id,
       status,
       college,
+      registration_type = 'normal',
       page = 1,
       limit = 50,
       sort_by = 'created_at',
@@ -434,6 +625,15 @@ router.get('/', requireAdmin, async (req, res) => {
 
     let query = 'SELECT * FROM attendees WHERE 1=1';
     const params = [];
+
+    // Filter by registration_type (strict separation between normal and spot)
+    if (registration_type && registration_type !== 'all') {
+      if (registration_type === 'spot') {
+        query += " AND registration_type = 'spot'";
+      } else {
+        query += " AND (registration_type = 'normal' OR registration_type IS NULL)";
+      }
+    }
 
     if (search && search.trim()) {
       query += ` AND (
@@ -487,7 +687,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const totalCount = Number(countRow?.total) || 0;
 
     // Sorting & pagination
-    const validSortCols = ['id', 'registration_id', 'full_name', 'mobile', 'division_name', 'sector_name', 'unit_name', 'college', 'status', 'created_at', 'check_in_time'];
+    const validSortCols = ['id', 'registration_id', 'full_name', 'mobile', 'division_name', 'sector_name', 'unit_name', 'college', 'status', 'registration_type', 'created_at', 'check_in_time'];
     const safeSort = validSortCols.includes(sort_by) ? sort_by : 'created_at';
     const safeOrder = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
@@ -515,7 +715,7 @@ router.get('/', requireAdmin, async (req, res) => {
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, mobile, division_id, sector_id, unit_id, college, status, notes } = req.body;
+    const { full_name, mobile, division_id, sector_id, unit_id, college, status, registration_type, notes } = req.body;
 
     const existing = await db.prepare('SELECT * FROM attendees WHERE id = ?').get(id);
     if (!existing) {
@@ -553,6 +753,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
         unit_name = COALESCE(?, unit_name),
         college = COALESCE(?, college),
         status = COALESCE(?, status),
+        registration_type = COALESCE(?, registration_type),
         notes = COALESCE(?, notes)
       WHERE id = ?
     `).run(
@@ -566,6 +767,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
       unitName,
       college ? college.trim() : null,
       status || null,
+      registration_type || null,
       notes !== undefined ? notes : null,
       id
     );
@@ -591,9 +793,18 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 // GET /api/attendees/export/csv - Export attendees to CSV
 router.get('/export/csv', requireAdmin, async (req, res) => {
   try {
-    const { division_id, institution_id, college, status } = req.query;
+    const { division_id, institution_id, college, status, registration_type = 'normal' } = req.query;
     let query = 'SELECT * FROM attendees WHERE 1=1';
     const params = [];
+
+    // Filter by registration_type
+    if (registration_type && registration_type !== 'all') {
+      if (registration_type === 'spot') {
+        query += " AND registration_type = 'spot'";
+      } else {
+        query += " AND (registration_type = 'normal' OR registration_type IS NULL)";
+      }
+    }
 
     if (division_id) {
       query += ' AND division_id = ?';
@@ -622,6 +833,7 @@ router.get('/export/csv', requireAdmin, async (req, res) => {
       'Registration ID',
       'Full Name',
       'Mobile Number',
+      'Registration Type',
       'Division',
       'Sector',
       'Unit',
@@ -643,6 +855,7 @@ router.get('/export/csv', requireAdmin, async (req, res) => {
       escapeCsv(a.registration_id),
       escapeCsv(a.full_name),
       escapeCsv(a.mobile),
+      escapeCsv(a.registration_type ? a.registration_type.toUpperCase() : 'NORMAL'),
       escapeCsv(a.division_name),
       escapeCsv(a.sector_name),
       escapeCsv(a.unit_name),
@@ -655,9 +868,10 @@ router.get('/export/csv', requireAdmin, async (req, res) => {
     ].join(','));
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const typeLabel = registration_type === 'spot' ? 'spot_' : '';
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename=muthaallim_attendees_${new Date().toISOString().slice(0, 10)}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=muthaallim_${typeLabel}attendees_${new Date().toISOString().slice(0, 10)}.csv`);
     res.send(csvContent);
   } catch (err) {
     res.status(500).json({ error: err.message });

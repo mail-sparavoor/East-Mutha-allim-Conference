@@ -4,6 +4,7 @@ import { Lock, Unlock, X, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-re
 export default function RegistrationStatusModal({
   isOpen,
   currentlyOpen,
+  targetType = 'normal', // 'normal' | 'spot'
   initialClosedMessage = '',
   onClose,
   onConfirm,
@@ -20,9 +21,12 @@ export default function RegistrationStatusModal({
   if (!isOpen) return null;
 
   const isClosing = currentlyOpen;
+  const isSpot = targetType === 'spot';
+  const labelType = isSpot ? 'Spot Registration' : 'Normal Registration';
 
   const handleConfirm = () => {
     onConfirm({
+      type: targetType,
       nextOpen: !currentlyOpen,
       closedMessage: closedMessage.trim()
     });
@@ -54,12 +58,16 @@ export default function RegistrationStatusModal({
           </div>
           <div>
             <h3 className="font-heading font-extrabold text-lg text-slate-900 leading-tight">
-              {isClosing ? 'Close Online Registration?' : 'Reopen Online Registration?'}
+              {isClosing ? `Close ${labelType}?` : `Reopen ${labelType}?`}
             </h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
               {isClosing
-                ? 'New delegate registrations will be blocked immediately on both the website and API.'
-                : 'Delegates from eligible institutions with available quota will immediately be able to register again.'}
+                ? (isSpot
+                    ? 'New spot delegate registrations will be blocked immediately on /spot-registration.'
+                    : 'New online delegate registrations will be blocked immediately on both the website and API.')
+                : (isSpot
+                    ? 'The Spot Registration desk will immediately be opened for on-site delegate admission.'
+                    : 'Delegates from eligible institutions with available quota will immediately be able to register again.')}
             </p>
           </div>
         </div>
@@ -84,7 +92,9 @@ export default function RegistrationStatusModal({
               </span>
             ) : (
               <span>
-                The public registration form and <strong>Register Now</strong> actions will be restored right away across the conference portal.
+                {isSpot
+                  ? <>The spot registration page (<strong>/spot-registration</strong>) will be active and open for immediate delegate submissions.</>
+                  : <>The public registration form and <strong>Register Now</strong> actions will be restored right away across the conference portal.</>}
               </span>
             )}
           </div>
@@ -101,11 +111,15 @@ export default function RegistrationStatusModal({
               value={closedMessage}
               onChange={(e) => setClosedMessage(e.target.value)}
               disabled={loading}
-              placeholder="e.g. Online registration for Muthaallim Conference 2026 is now closed. Please contact your division coordinator for assistance."
+              placeholder={
+                isSpot
+                  ? 'e.g. Spot registration for Muthaallim Conference 2026 is currently closed.'
+                  : 'e.g. Online registration for Muthaallim Conference 2026 is now closed. Please contact your division coordinator for assistance.'
+              }
               className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 resize-none"
             />
             <p className="text-[11px] text-slate-400">
-              Leave blank to display the standard registration closed notice.
+              Leave blank to display the standard {isSpot ? 'spot registration' : 'registration'} closed notice.
             </p>
           </div>
         )}
@@ -138,12 +152,12 @@ export default function RegistrationStatusModal({
             ) : isClosing ? (
               <>
                 <Lock className="w-3.5 h-3.5" />
-                <span>Close Registration</span>
+                <span>Close {labelType}</span>
               </>
             ) : (
               <>
                 <Unlock className="w-3.5 h-3.5" />
-                <span>Reopen Registration</span>
+                <span>Reopen {labelType}</span>
               </>
             )}
           </button>

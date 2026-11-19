@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 
-export default function AttendeeTable({ onViewTicket, onDataChanged }) {
+export default function AttendeeTable({ onViewTicket, onDataChanged, registrationType = 'normal' }) {
+  const isSpot = registrationType === 'spot';
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 15, totalPages: 1 });
@@ -83,6 +84,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
         division_id: divisionFilter,
         institution_id: institutionFilter,
         status: statusFilter,
+        registration_type: registrationType,
         page,
         limit: pagination.limit
       });
@@ -97,7 +99,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
 
   useEffect(() => {
     loadAttendees(1);
-  }, [search, divisionFilter, institutionFilter, statusFilter]);
+  }, [search, divisionFilter, institutionFilter, statusFilter, registrationType]);
 
   // Handle Quick Toggle Check-in
   const handleToggleCheckin = async (attendee) => {
@@ -203,7 +205,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
 
   // Export to CSV
   const handleExportCSV = () => {
-    const params = {};
+    const params = { registration_type: registrationType };
     if (divisionFilter) params.division_id = divisionFilter;
     if (institutionFilter) params.institution_id = institutionFilter;
     if (statusFilter) params.status = statusFilter;
@@ -213,6 +215,25 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
 
   return (
     <div className="space-y-4">
+      {/* Section Indicator Badge */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-2">
+          {isSpot ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/15 text-amber-900 border border-amber-300">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>Spot Registrations Registry</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-900 border border-emerald-300">
+              <span>Normal Registrations Registry</span>
+            </span>
+          )}
+          <span className="text-xs text-slate-500 font-medium">
+            ({pagination.total} {isSpot ? 'spot candidates' : 'pre-registered candidates'})
+          </span>
+        </div>
+      </div>
+
       {/* Controls Bar: Search, Filters, CSV Export */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {/* Search Input */}
@@ -222,7 +243,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
           </div>
           <input
             type="text"
-            placeholder="Search by name, mobile, registration ID, unit..."
+            placeholder={isSpot ? "Search spot candidates by name, mobile, registration ID..." : "Search by name, mobile, registration ID, unit..."}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
@@ -411,7 +432,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
               ) : attendees.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
-                    No attendees found matching current criteria.
+                    No {isSpot ? 'spot registrations' : 'attendees'} found matching current criteria.
                   </td>
                 </tr>
               ) : (
@@ -419,14 +440,25 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
                   <tr key={att.id} className="hover:bg-slate-50/80 transition">
                     {/* Reg ID */}
                     <td className="py-3 px-4">
-                      <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                      <span className={`font-mono font-bold px-2 py-0.5 rounded border ${
+                        att.registration_type === 'spot' || isSpot
+                          ? 'text-amber-900 bg-amber-50 border-amber-200'
+                          : 'text-emerald-800 bg-emerald-50 border-emerald-100'
+                      }`}>
                         {att.registration_id}
                       </span>
                     </td>
 
                     {/* Attendee Name & Phone */}
                     <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900">{att.full_name}</div>
+                      <div className="font-bold text-slate-900 flex items-center">
+                        <span>{att.full_name}</span>
+                        {att.registration_type === 'spot' && (
+                          <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
+                            Spot
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-slate-400 font-mono">+91 {att.mobile}</div>
                     </td>
 
@@ -525,7 +557,7 @@ export default function AttendeeTable({ onViewTicket, onDataChanged }) {
         <div className="p-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
           <div>
             Showing <strong className="text-slate-800">{attendees.length}</strong> of{' '}
-            <strong className="text-slate-800">{pagination.total}</strong> total attendees
+            <strong className="text-slate-800">{pagination.total}</strong> total {isSpot ? 'spot candidates' : 'attendees'}
           </div>
 
           <div className="flex items-center gap-2">

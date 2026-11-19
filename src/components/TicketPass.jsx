@@ -82,20 +82,26 @@ export default function TicketPass({ attendee, onBack, eventSettings }) {
 
   if (!attendee) return null;
 
-  // Number format: (MEMC1001) - only the number is needed
+  const isSpot =
+    attendee?.registration_type === 'spot' ||
+    String(attendee?.registration_id || '').toUpperCase().startsWith('SPOT');
+
+  // Number format: (MEMC1001 or SPOT1001) - only the number is needed
   const getTicketNumber = () => {
-    if (!attendee) return 'MEMC1001';
+    if (!attendee) return isSpot ? 'SPOT1001' : 'MEMC1001';
     const regId = attendee.registration_id || '';
-    if (/^MEMC\d+$/i.test(regId)) {
+    if (/^(MEMC|SPOT|MEMCS)\d+$/i.test(regId)) {
       return regId.toUpperCase();
     }
     const digits = regId.match(/\d+$/);
     if (digits) {
       const n = parseInt(digits[0], 10);
-      return `MEMC${n >= 1000 ? n : 1000 + n}`;
+      const prefix = isSpot ? 'SPOT' : 'MEMC';
+      return `${prefix}${n >= 1000 ? n : 1000 + n}`;
     }
     const idNum = attendee.id || 1;
-    return `MEMC${1000 + idNum}`;
+    const prefix = isSpot ? 'SPOT' : 'MEMC';
+    return `${prefix}${1000 + idNum}`;
   };
 
   const ticketNumber = getTicketNumber();
@@ -240,13 +246,25 @@ export default function TicketPass({ attendee, onBack, eventSettings }) {
           
           {/* Header Row: Badge & Pass Label */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest bg-slate-100 text-slate-800 border border-slate-200">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Event Ticket</span>
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest border ${
+                isSpot
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-slate-100 text-slate-800 border-slate-200'
+              }`}
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${isSpot ? 'text-amber-600' : 'text-amber-500'}`} />
+              <span>{isSpot ? 'Spot Delegate Pass' : 'Event Ticket'}</span>
             </span>
 
             <div className="flex items-center">
-              <span className="font-mono text-xs sm:text-sm font-black text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 tracking-wider">
+              <span
+                className={`font-mono text-xs sm:text-sm font-black px-2.5 py-1 rounded-lg border tracking-wider ${
+                  isSpot
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-slate-100 text-slate-900 border-slate-200'
+                }`}
+              >
                 {ticketNumber}
               </span>
             </div>

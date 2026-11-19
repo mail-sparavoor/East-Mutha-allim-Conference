@@ -89,6 +89,7 @@ CREATE TABLE `attendees` (
   `college` VARCHAR(255) NOT NULL,
   `verification_token` VARCHAR(100) NOT NULL UNIQUE,
   `status` ENUM('Registered', 'Admitted', 'Cancelled') DEFAULT 'Registered',
+  `registration_type` ENUM('normal', 'spot') NOT NULL DEFAULT 'normal',
   `check_in_time` VARCHAR(100) NULL DEFAULT NULL,
   `check_in_by` VARCHAR(100) NULL DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -97,7 +98,8 @@ CREATE TABLE `attendees` (
   INDEX `idx_attendees_reg_id` (`registration_id`),
   INDEX `idx_attendees_division` (`division_id`),
   INDEX `idx_attendees_institution` (`institution_id`),
-  INDEX `idx_attendees_status` (`status`)
+  INDEX `idx_attendees_status` (`status`),
+  INDEX `idx_attendees_reg_type` (`registration_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

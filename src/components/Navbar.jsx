@@ -10,7 +10,8 @@ import {
   Search, 
   Calendar,
   MapPin,
-  Sparkles
+  Sparkles,
+  Zap
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -25,6 +26,7 @@ export default function Navbar({
 
   const navItems = [
     { id: 'register', label: 'Home / Register', icon: Compass },
+    { id: 'spot-registration', label: 'Spot Registration', icon: Zap, badge: 'On-site' },
     { id: 'ticket-lookup', label: 'Find Ticket', icon: Search },
     { id: 'checkin', label: 'Gate Scanner', icon: QrCode, badge: 'Venue' },
     { id: 'admin', label: 'Admin Dashboard', icon: ShieldCheck, adminOnly: true }

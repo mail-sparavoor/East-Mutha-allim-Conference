@@ -20,7 +20,8 @@ import {
   UserCheck,
   ExternalLink,
   Shield,
-  AlertCircle
+  AlertCircle,
+  Zap
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AttendeeTable from './AttendeeTable';
@@ -58,18 +59,25 @@ export default function AdminDashboard({
     event_venue: '',
     registration_open: 'true',
     registration_closed_message: '',
+    spot_registration_open: 'true',
+    spot_registration_closed_message: '',
     contact_phone: '',
     contact_email: '',
     ...(eventSettings || {})
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [regModalOpen, setRegModalOpen] = useState(false);
+  const [regModalConfig, setRegModalConfig] = useState({
+    isOpen: false,
+    targetType: 'normal' // 'normal' | 'spot'
+  });
   const [togglingRegistration, setTogglingRegistration] = useState(false);
   const [regStatusFeedback, setRegStatusFeedback] = useState(null); // { type: 'success' | 'error', text: string }
 
   const isRegistrationOpen =
     String(settingsData.registration_open ?? 'true').toLowerCase() !== 'false';
+  const isSpotRegistrationOpen =
+    String(settingsData.spot_registration_open ?? 'true').toLowerCase() !== 'false';
 
   const fetchAnalytics = async () => {
     try {
@@ -104,7 +112,7 @@ export default function AdminDashboard({
   }, []);
 
   const handleSaveSettings = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     setSavingSettings(true);
     setSettingsSaved(false);
     try {
@@ -121,26 +129,34 @@ export default function AdminDashboard({
     }
   };
 
-  const handleToggleRegistrationConfirm = async ({ nextOpen, closedMessage }) => {
+  const handleToggleRegistrationConfirm = async ({ type, nextOpen, closedMessage }) => {
     setTogglingRegistration(true);
     setRegStatusFeedback(null);
     try {
+      const isSpot = type === 'spot';
+      const keyOpen = isSpot ? 'spot_registration_open' : 'registration_open';
+      const keyMsg = isSpot ? 'spot_registration_closed_message' : 'registration_closed_message';
+
       const payload = {
-        registration_open: nextOpen ? 'true' : 'false'
+        [keyOpen]: nextOpen ? 'true' : 'false'
       };
       if (!nextOpen) {
-        payload.registration_closed_message = closedMessage;
+        payload[keyMsg] = closedMessage;
       }
       const res = await api.updateSettings(payload);
       const updated = res?.settings || { ...settingsData, ...payload };
       setSettingsData((prev) => ({ ...prev, ...updated }));
       if (onSettingsUpdated) onSettingsUpdated(updated);
-      setRegModalOpen(false);
+      setRegModalConfig((prev) => ({ ...prev, isOpen: false }));
       setRegStatusFeedback({
         type: 'success',
-        text: nextOpen
-          ? 'Registration has been reopened. Delegates can now register online.'
-          : 'Registration has been closed. New online registrations are now blocked.'
+        text: isSpot
+          ? (nextOpen
+              ? 'Spot Registration has been reopened. On-site candidates can now register.'
+              : 'Spot Registration has been closed. On-site candidate submissions are now paused.')
+          : (nextOpen
+              ? 'Normal Registration has been reopened. Delegates can now register online.'
+              : 'Normal Registration has been closed. New online registrations are now paused.')
       });
       setTimeout(() => setRegStatusFeedback(null), 5000);
     } catch (err) {
@@ -163,10 +179,17 @@ export default function AdminDashboard({
     },
     {
       id: 'attendees',
-      label: 'Attendee Directory',
+      label: 'Normal Registrations',
       icon: Users,
-      badge: analyticsData?.overview?.total_registrations || 0,
-      description: 'Delegate list, check-in & passes'
+      badge: analyticsData?.overview?.total_normal_registrations ?? analyticsData?.overview?.total_registrations ?? 0,
+      description: 'Online registered candidates & passes'
+    },
+    {
+      id: 'spot-attendees',
+      label: 'Spot Registrations',
+      icon: Zap,
+      badge: analyticsData?.overview?.total_spot_registrations ?? 0,
+      description: 'On-site spot admissions & passes'
     },
     {
       id: 'hierarchy',
@@ -244,7 +267,7 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* Registration Open/Closed Status & Quick Action */}
+          {/* Normal Registration Open/Closed Status & Quick Action */}
           <div
             className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
               isRegistrationOpen
@@ -260,7 +283,7 @@ export default function AdminDashboard({
               />
               <div className="leading-tight truncate">
                 <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold">
-                  Registration
+                  Normal Reg
                 </span>
                 <span
                   className={`text-[11px] font-bold ${
@@ -275,16 +298,70 @@ export default function AdminDashboard({
               type="button"
               onClick={() => {
                 setMobileMenuOpen(false);
-                setRegModalOpen(true);
+                setRegModalConfig({ isOpen: true, targetType: 'normal' });
               }}
               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1 flex-shrink-0 ${
                 isRegistrationOpen
                   ? 'bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/40'
                   : 'bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-200 border border-emerald-500/40'
               }`}
-              title={isRegistrationOpen ? 'Close Registration' : 'Reopen Registration'}
+              title={isRegistrationOpen ? 'Close Normal Registration' : 'Reopen Normal Registration'}
             >
               {isRegistrationOpen ? (
+                <>
+                  <Lock className="w-3 h-3" />
+                  <span>Close</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3 h-3" />
+                  <span>Reopen</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Spot Registration Open/Closed Status & Quick Action */}
+          <div
+            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+              isSpotRegistrationOpen
+                ? 'bg-amber-950/50 border-amber-800/60'
+                : 'bg-rose-950/60 border-rose-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  isSpotRegistrationOpen ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'
+                }`}
+              />
+              <div className="leading-tight truncate">
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold">
+                  Spot Reg
+                </span>
+                <span
+                  className={`text-[11px] font-bold ${
+                    isSpotRegistrationOpen ? 'text-amber-300' : 'text-rose-300'
+                  }`}
+                >
+                  {isSpotRegistrationOpen ? 'Open' : 'Closed'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setRegModalConfig({ isOpen: true, targetType: 'spot' });
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1 flex-shrink-0 ${
+                isSpotRegistrationOpen
+                  ? 'bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/40'
+                  : 'bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-500/40'
+              }`}
+              title={isSpotRegistrationOpen ? 'Close Spot Registration' : 'Reopen Spot Registration'}
+            >
+              {isSpotRegistrationOpen ? (
                 <>
                   <Lock className="w-3 h-3" />
                   <span>Close</span>
@@ -482,6 +559,7 @@ export default function AdminDashboard({
             <h1 className="text-xl font-heading font-black text-slate-900 tracking-tight flex items-center gap-2">
               {activeTab === 'analytics' && <BarChart3 className="w-5 h-5 text-emerald-600" />}
               {activeTab === 'attendees' && <Users className="w-5 h-5 text-emerald-600" />}
+              {activeTab === 'spot-attendees' && <Zap className="w-5 h-5 text-amber-500" />}
               {activeTab === 'hierarchy' && <FolderTree className="w-5 h-5 text-emerald-600" />}
               {activeTab === 'settings' && <Settings className="w-5 h-5 text-emerald-600" />}
               <span>{navItems.find(n => n.id === activeTab)?.label}</span>
@@ -492,10 +570,10 @@ export default function AdminDashboard({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Registration Open/Closed Quick Toggle */}
+            {/* Normal Registration Open/Closed Quick Toggle */}
             <button
               type="button"
-              onClick={() => setRegModalOpen(true)}
+              onClick={() => setRegModalConfig({ isOpen: true, targetType: 'normal' })}
               className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
                 isRegistrationOpen
                   ? 'bg-emerald-50 hover:bg-rose-50 text-emerald-800 hover:text-rose-700 border-emerald-200 hover:border-rose-200'
@@ -508,8 +586,32 @@ export default function AdminDashboard({
                   isRegistrationOpen ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
                 }`}
               />
-              <span>{isRegistrationOpen ? 'Registration Open' : 'Registration Closed'}</span>
+              <span>{isRegistrationOpen ? 'Normal Reg Open' : 'Normal Reg Closed'}</span>
               {isRegistrationOpen ? (
+                <Lock className="w-3.5 h-3.5 opacity-70" />
+              ) : (
+                <Unlock className="w-3.5 h-3.5 opacity-70" />
+              )}
+            </button>
+
+            {/* Spot Registration Open/Closed Quick Toggle */}
+            <button
+              type="button"
+              onClick={() => setRegModalConfig({ isOpen: true, targetType: 'spot' })}
+              className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                isSpotRegistrationOpen
+                  ? 'bg-amber-50 hover:bg-rose-50 text-amber-800 hover:text-rose-700 border-amber-200 hover:border-rose-200'
+                  : 'bg-rose-50 hover:bg-amber-50 text-rose-700 hover:text-amber-800 border-rose-200 hover:border-amber-200'
+              }`}
+              title={isSpotRegistrationOpen ? 'Click to close spot registration' : 'Click to reopen spot registration'}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isSpotRegistrationOpen ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
+                }`}
+              />
+              <span>{isSpotRegistrationOpen ? 'Spot Reg Open' : 'Spot Reg Closed'}</span>
+              {isSpotRegistrationOpen ? (
                 <Lock className="w-3.5 h-3.5 opacity-70" />
               ) : (
                 <Unlock className="w-3.5 h-3.5 opacity-70" />
@@ -587,7 +689,7 @@ export default function AdminDashboard({
             </div>
           )}
 
-          {/* Persistent Warning Strip when Registration is Closed */}
+          {/* Persistent Warning Strip when Normal Registration is Closed */}
           {!isRegistrationOpen && (
             <div className="p-3.5 sm:px-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 text-xs">
@@ -595,19 +697,44 @@ export default function AdminDashboard({
                   <Lock className="w-4 h-4" />
                 </div>
                 <div>
-                  <span className="font-bold block text-rose-950">Online Registration is Currently Closed</span>
+                  <span className="font-bold block text-rose-950">Normal Online Registration is Currently Closed</span>
                   <span className="text-rose-700">
-                    New delegate sign-ups are paused. Already-registered attendees can still access their passes.
+                    New normal delegate sign-ups are paused. Already-registered attendees can still access their passes.
                   </span>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setRegModalOpen(true)}
+                onClick={() => setRegModalConfig({ isOpen: true, targetType: 'normal' })}
                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
               >
                 <Unlock className="w-3.5 h-3.5" />
-                <span>Reopen Registration</span>
+                <span>Reopen Normal Registration</span>
+              </button>
+            </div>
+          )}
+
+          {/* Persistent Warning Strip when Spot Registration is Closed */}
+          {!isSpotRegistrationOpen && (
+            <div className="p-3.5 sm:px-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-xs">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 border border-amber-300 flex items-center justify-center flex-shrink-0">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold block text-amber-950">Spot Registration is Currently Closed</span>
+                  <span className="text-amber-800">
+                    On-site spot admissions at /spot-registration are paused.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRegModalConfig({ isOpen: true, targetType: 'spot' })}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Reopen Spot Registration</span>
               </button>
             </div>
           )}
@@ -634,6 +761,15 @@ export default function AdminDashboard({
 
           {activeTab === 'attendees' && (
             <AttendeeTable
+              registrationType="normal"
+              onViewTicket={onViewTicket}
+              onDataChanged={fetchAnalytics}
+            />
+          )}
+
+          {activeTab === 'spot-attendees' && (
+            <AttendeeTable
+              registrationType="spot"
               onViewTicket={onViewTicket}
               onDataChanged={fetchAnalytics}
             />
@@ -647,8 +783,8 @@ export default function AdminDashboard({
 
           {activeTab === 'settings' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Registration Status Control Card (Full Width) */}
-              <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
+              {/* Normal Registration Status Control Card */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-start gap-3.5">
                     <div
@@ -663,7 +799,7 @@ export default function AdminDashboard({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-heading font-bold text-base text-slate-900">
-                          Registration Portal Control
+                          Normal Registration Control
                         </h3>
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
@@ -682,16 +818,16 @@ export default function AdminDashboard({
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
                         {isRegistrationOpen
-                          ? 'Online registration is active. New delegates can register and receive digital entry passes.'
-                          : 'Online registration is closed. New submissions are blocked while existing delegates can still retrieve their passes.'}
+                          ? 'Online public registration is active. New delegates can register online.'
+                          : 'Online registration is closed. New public sign-ups are paused.'}
                       </p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setRegModalOpen(true)}
-                    className={`px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer flex-shrink-0 ${
+                    onClick={() => setRegModalConfig({ isOpen: true, targetType: 'normal' })}
+                    className={`px-4 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer flex-shrink-0 ${
                       isRegistrationOpen
                         ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
                         : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
@@ -700,12 +836,12 @@ export default function AdminDashboard({
                     {isRegistrationOpen ? (
                       <>
                         <Lock className="w-4 h-4" />
-                        <span>Close Registration</span>
+                        <span>Close Normal</span>
                       </>
                     ) : (
                       <>
                         <Unlock className="w-4 h-4" />
-                        <span>Reopen Registration</span>
+                        <span>Reopen Normal</span>
                       </>
                     )}
                   </button>
@@ -714,7 +850,7 @@ export default function AdminDashboard({
                 {/* Custom Closed Notice Message Editor */}
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <label className="block text-xs font-semibold text-slate-700">
-                    Closed Registration Notice Message <span className="text-slate-400 font-normal">(Shown on public site when closed)</span>
+                    Normal Reg Closed Notice <span className="text-slate-400 font-normal">(Shown when closed)</span>
                   </label>
                   <div className="flex flex-col sm:flex-row gap-2.5">
                     <input
@@ -725,6 +861,98 @@ export default function AdminDashboard({
                       }
                       placeholder="Leave empty for default message, or enter a custom announcement..."
                       className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveSettings}
+                      disabled={savingSettings}
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-70 whitespace-nowrap"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save Notice</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Spot Registration Status Control Card */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 border ${
+                        isSpotRegistrationOpen
+                          ? 'bg-amber-50 text-amber-600 border-amber-200'
+                          : 'bg-rose-50 text-rose-600 border-rose-200'
+                      }`}
+                    >
+                      {isSpotRegistrationOpen ? <Zap className="w-5 h-5 text-amber-600" /> : <Lock className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-heading font-bold text-base text-slate-900">
+                          Spot Registration Control
+                        </h3>
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            isSpotRegistrationOpen
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isSpotRegistrationOpen ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
+                            }`}
+                          />
+                          {isSpotRegistrationOpen ? 'OPEN' : 'CLOSED'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {isSpotRegistrationOpen
+                          ? 'Spot counter active at /spot-registration. Immediate admission enabled.'
+                          : 'Spot registration closed. On-site candidate submissions are paused.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setRegModalConfig({ isOpen: true, targetType: 'spot' })}
+                    className={`px-4 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer flex-shrink-0 ${
+                      isSpotRegistrationOpen
+                        ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                        : 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                    }`}
+                  >
+                    {isSpotRegistrationOpen ? (
+                      <>
+                        <Lock className="w-4 h-4" />
+                        <span>Close Spot</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-4 h-4" />
+                        <span>Reopen Spot</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Custom Spot Closed Notice Message Editor */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Spot Reg Closed Notice <span className="text-slate-400 font-normal">(Shown on /spot-registration when closed)</span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <input
+                      type="text"
+                      value={settingsData.spot_registration_closed_message || ''}
+                      onChange={(e) =>
+                        setSettingsData({ ...settingsData, spot_registration_closed_message: e.target.value })
+                      }
+                      placeholder="Leave empty for default message, or enter a custom announcement..."
+                      className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                     <button
                       type="button"
@@ -855,10 +1083,15 @@ export default function AdminDashboard({
 
       {/* Registration Open/Close Confirmation Modal */}
       <RegistrationStatusModal
-        isOpen={regModalOpen}
-        currentlyOpen={isRegistrationOpen}
-        initialClosedMessage={settingsData.registration_closed_message || ''}
-        onClose={() => !togglingRegistration && setRegModalOpen(false)}
+        isOpen={regModalConfig.isOpen}
+        targetType={regModalConfig.targetType}
+        currentlyOpen={regModalConfig.targetType === 'spot' ? isSpotRegistrationOpen : isRegistrationOpen}
+        initialClosedMessage={
+          regModalConfig.targetType === 'spot'
+            ? settingsData.spot_registration_closed_message || ''
+            : settingsData.registration_closed_message || ''
+        }
+        onClose={() => !togglingRegistration && setRegModalConfig((prev) => ({ ...prev, isOpen: false }))}
         onConfirm={handleToggleRegistrationConfirm}
         loading={togglingRegistration}
       />

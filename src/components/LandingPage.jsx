@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowRight,
   Lock,
-  Ticket
+  Ticket,
+  Zap
 } from 'lucide-react';
 import RegistrationForm from './RegistrationForm';
 
@@ -11,10 +12,13 @@ export default function LandingPage({
   eventSettings,
   settingsLoaded = true,
   onRegistrationStatusChanged,
-  onOpenLookup 
+  onOpenLookup,
+  onGoToSpotRegistration
 }) {
   const isRegistrationOpen =
     !eventSettings || String(eventSettings.registration_open).toLowerCase() !== 'false';
+  const isSpotRegistrationOpen =
+    !eventSettings || String(eventSettings.spot_registration_open).toLowerCase() !== 'false';
   // Countdown Timer
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
@@ -106,13 +110,23 @@ export default function LandingPage({
                     </button>
                   ) : (
                     <>
-                      <div className="w-full py-2.5 px-4 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2">
+                      <div className="w-full py-2 px-4 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2">
                         <Lock className="w-4 h-4 text-rose-300 flex-shrink-0" />
-                        <span>Registration Closed</span>
+                        <span>Online Registration Closed</span>
                       </div>
+                      {isSpotRegistrationOpen && onGoToSpotRegistration && (
+                        <button
+                          onClick={onGoToSpotRegistration}
+                          className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl font-heading font-extrabold text-sm sm:text-lg text-white bg-amber-600 hover:bg-amber-700 shadow-xl shadow-amber-600/35 transform hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                        >
+                          <Zap className="w-4 sm:w-5 h-4 sm:h-5 text-amber-200" />
+                          <span>Spot Registration Active</span>
+                          <ArrowRight className="w-4 sm:w-5 h-4 sm:h-5 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                      )}
                       <button
                         onClick={onOpenLookup}
-                        className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl font-heading font-extrabold text-sm sm:text-lg text-white bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-600/35 transform hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                        className="w-full py-3 sm:py-3.5 px-4 sm:px-6 rounded-2xl font-heading font-bold text-xs sm:text-base text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/35 transform hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 group cursor-pointer"
                       >
                         <Ticket className="w-4 sm:w-5 h-4 sm:h-5" />
                         <span>Find Your Ticket Pass</span>
@@ -167,6 +181,7 @@ export default function LandingPage({
           settingsLoaded={settingsLoaded}
           onRegistrationStatusChanged={onRegistrationStatusChanged}
           onFindExistingTicket={onOpenLookup}
+          onGoToSpotRegistration={onGoToSpotRegistration}
         />
       </section>
     </div>

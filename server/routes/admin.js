@@ -80,17 +80,25 @@ router.post('/change-password', requireAdmin, async (req, res) => {
 // GET /api/admin/analytics - Full overview metrics & breakdowns
 router.get('/analytics', requireAdmin, async (req, res) => {
   try {
-    // 1. Overall counts
+    // 1. Overall counts (distinguishing normal vs spot registrations)
     const overview = await db.prepare(`
       SELECT 
         COUNT(*) as total_registrations,
+        SUM(CASE WHEN registration_type = 'spot' THEN 1 ELSE 0 END) as total_spot_registrations,
+        SUM(CASE WHEN registration_type = 'normal' OR registration_type IS NULL THEN 1 ELSE 0 END) as total_normal_registrations,
         SUM(CASE WHEN status = 'Admitted' THEN 1 ELSE 0 END) as total_admitted,
+        SUM(CASE WHEN status = 'Admitted' AND registration_type = 'spot' THEN 1 ELSE 0 END) as spot_admitted,
+        SUM(CASE WHEN status = 'Admitted' AND (registration_type = 'normal' OR registration_type IS NULL) THEN 1 ELSE 0 END) as normal_admitted,
         SUM(CASE WHEN status = 'Registered' THEN 1 ELSE 0 END) as pending_admissions
       FROM attendees
     `).get();
 
     const totalReg = Number(overview?.total_registrations) || 0;
+    const totalNormalReg = Number(overview?.total_normal_registrations) || 0;
+    const totalSpotReg = Number(overview?.total_spot_registrations) || 0;
     const totalAdm = Number(overview?.total_admitted) || 0;
+    const normalAdm = Number(overview?.normal_admitted) || 0;
+    const spotAdm = Number(overview?.spot_admitted) || 0;
     const pendingAdm = Number(overview?.pending_admissions) || 0;
     const admissionRate = totalReg > 0 ? Math.round((totalAdm / totalReg) * 100) : 0;
 
@@ -204,7 +212,11 @@ router.get('/analytics', requireAdmin, async (req, res) => {
     res.json({
       overview: {
         total_registrations: totalReg,
+        total_normal_registrations: totalNormalReg,
+        total_spot_registrations: totalSpotReg,
         total_admitted: totalAdm,
+        normal_admitted: normalAdm,
+        spot_admitted: spotAdm,
         pending_admissions: pendingAdm,
         admission_rate: admissionRate
       },

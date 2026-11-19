@@ -228,15 +228,22 @@ export const api = {
   },
 
   // Attendees
-  async checkAttendee(mobile, full_name) {
+  async checkAttendee(mobile, full_name, registration_type = 'normal') {
     return fetchApi('/attendees/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mobile, full_name })
+      body: JSON.stringify({ mobile, full_name, registration_type })
     });
   },
   async registerAttendee(data) {
     return fetchApi('/attendees/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  },
+  async spotRegisterAttendee(data) {
+    return fetchApi('/attendees/spot-register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)

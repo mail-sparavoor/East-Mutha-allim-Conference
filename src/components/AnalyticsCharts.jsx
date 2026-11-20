@@ -19,7 +19,8 @@ import {
   Link2,
   Edit2,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 import CollegeProgressCard from './CollegeProgressCard';
 import { api, normalizeSlug } from '../utils/api';
@@ -57,8 +58,8 @@ export default function AnalyticsCharts({
   if (!analyticsData) {
     return (
       <div className="space-y-6 animate-pulse">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200/90 shadow-sm space-y-3">
               <div className="flex items-center justify-between">
                 <div className="h-3 w-20 bg-slate-200 rounded" />
@@ -83,7 +84,11 @@ export default function AnalyticsCharts({
 
   const overview = analyticsData?.overview || {
     total_registrations: 0,
+    total_normal_registrations: 0,
+    total_spot_registrations: 0,
     total_admitted: 0,
+    normal_admitted: 0,
+    spot_admitted: 0,
     pending_admissions: 0,
     admission_rate: 0
   };
@@ -169,85 +174,95 @@ export default function AnalyticsCharts({
     setTimeout(() => setCopiedDivisionSlug(false), 2500);
   };
 
-  // Generate WhatsApp formatted text: Highest Count First by default
+  // Generate WhatsApp formatted text: Full Admission Details with Spot Registrations (Ranked by Total Admitted)
   const generateWhatsAppBreakdown = () => {
-    const divisionsOrder = [
-      'Pulikkal',
-      'Areekode',
-      'Kondoty',
-      'Wandoor',
-      'Manjeri West',
-      'Manjeri East',
-      'Nilambur',
-      'Malappuram',
-      'Edavannappra',
-      'Edakkara',
-      'Kolathur',
-      'Perinthalmanna'
-    ];
-
-    const norm = (s) => (s || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '')
-      .replace(/t+/g, 't');
-
     const byDiv = breakdown?.byDivision || [];
 
-    // Map each standard division with its count, allocated quota, and percentage
-    const list = divisionsOrder.map((divName, idx) => {
-      const targetKey = norm(divName);
-      const found = byDiv.find((d) => norm(d.name) === targetKey);
-      const count = found ? (Number(found.total_attendees) || 0) : 0;
-      const quota = found ? (Number(found.allocated_quota) || 0) : 0;
-      const pct = quota > 0 ? Math.round((count / quota) * 100) : 0;
+    const totalReg = Number(overview.total_registrations) || 0;
+    const spotReg = Number(overview.total_spot_registrations) || 0;
+    const normalReg = Number(overview.total_normal_registrations) ?? (totalReg - spotReg);
+    const totalAdm = Number(overview.total_admitted) || 0;
+    const spotAdm = Number(overview.spot_admitted) || 0;
+    const normalAdm = Number(overview.normal_admitted) ?? (totalAdm - spotAdm);
+    const pendingAdm = Number(overview.pending_admissions) || 0;
+    const overallRate = totalReg > 0 ? Math.round((totalAdm / totalReg) * 100) : 0;
+    const normalRate = normalReg > 0 ? Math.round((normalAdm / normalReg) * 100) : 0;
+    const spotRate = spotReg > 0 ? Math.round((spotAdm / spotReg) * 100) : 0;
+
+    // Process all divisions with accurate numbers
+    const list = byDiv.map((div, idx) => {
+      const count = Number(div.total_attendees) || 0;
+      const spot = Number(div.spot_count) || 0;
+      const normal = Number(div.normal_count) ?? (count - spot);
+      const admitted = Number(div.admitted_count) || 0;
+      const spotAdmitted = Number(div.spot_admitted_count) || 0;
+      const normalAdmitted = Number(div.normal_admitted_count) ?? (admitted - spotAdmitted);
+      const quota = Number(div.allocated_quota) || 0;
+      const admRate = count > 0 ? Math.round((admitted / count) * 100) : 0;
+
       return {
-        name: divName,
+        id: div.id,
+        name: div.name,
+        code: div.code,
         count,
+        spot,
+        normal,
+        admitted,
+        spotAdmitted,
+        normalAdmitted,
         quota,
-        pct,
+        admRate,
         originalIndex: idx
       };
     });
 
-    // Also include any extra custom divisions if present
-    const handledKeys = new Set(divisionsOrder.map(norm));
-    const extraDivs = byDiv.filter(d => !handledKeys.has(norm(d.name)));
-    extraDivs.forEach((extra, i) => {
-      const count = Number(extra.total_attendees) || 0;
-      const quota = Number(extra.allocated_quota) || 0;
-      const pct = quota > 0 ? Math.round((count / quota) * 100) : 0;
-      list.push({
-        name: extra.name,
-        count,
-        quota,
-        pct,
-        originalIndex: divisionsOrder.length + i
-      });
-    });
-
-    // Highest Count First (descending order)
+    // Sort by Admitted count descending (highest check-ins first), then by total count
     list.sort((a, b) => {
+      if (b.admitted !== a.admitted) return b.admitted - a.admitted;
       if (b.count !== a.count) return b.count - a.count;
       return a.originalIndex - b.originalIndex;
     });
 
+    const nowStr = new Date().toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
     const lines = [
-      'Malappuram East District',
-      "Mutha'allim Conference",
+      '*MALAPPURAM EAST DISTRICT*',
+      "MUTHA'ALLIM CONFERENCE 2026",
+      '📊 *LIVE ADMISSION & SPOT REGISTRATION REPORT*',
+      '━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '*Attendee Breakdown (Quota & Progress)*',
+      '📌 *OVERALL ADMISSION SUMMARY*',
+      `• *Total Check-Ins:* ${totalAdm} / ${totalReg} (${overallRate}%)`,
+      `• *Normal Admitted:* ${normalAdm} / ${normalReg} (${normalRate}%)`,
+      `• *Spot Admitted:* ${spotAdm} / ${spotReg} (${spotRate}%)`,
+      `• *Pending Admissions:* ${pendingAdm} delegates awaiting check-in`,
+      '',
+      '⚡ *SPOT REGISTRATION DETAILS*',
+      `• Total Spot Registered: *${spotReg}*`,
+      `• Spot Verified & Admitted: *${spotAdm}* (${spotRate}%)`,
+      '',
+      '━━━━━━━━━━━━━━━━━━━━━━━',
+      '📍 *DIVISION-WISE ADMISSION DETAILS*',
+      '_(Ranked by Total Admitted)_',
       ''
     ];
 
     list.forEach((item, idx) => {
-      if (item.quota > 0) {
-        lines.push(`${idx + 1}. ${item.name}: ${item.count}/${item.quota} (${item.pct}%)`);
-      } else {
-        lines.push(`${idx + 1}. ${item.name}: ${item.count}`);
-      }
+      const quotaNote = item.quota > 0 ? ` [Quota: ${item.quota}]` : '';
+      lines.push(`${idx + 1}. *${item.name}*: *${item.admitted}* Admitted / ${item.count} Total (${item.admRate}%)${quotaNote}`);
+      lines.push(`   ↳ Normal: ${item.normal} (${item.normalAdmitted} adm) | Spot: ${item.spot} (${item.spotAdmitted} adm)`);
+      lines.push('');
     });
 
-    lines.push('');
+    lines.push('━━━━━━━━━━━━━━━━━━━━━━━');
+    lines.push(`🕒 _Report Generated: ${nowStr}_`);
     lines.push('©️ SSF Malappuram East District');
 
     return lines.join('\n');
@@ -281,8 +296,8 @@ export default function AnalyticsCharts({
 
   return (
     <div className="space-y-6">
-      {/* 4 Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+      {/* 5 Metric Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
         {/* Total Registrations */}
         <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200/90 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
@@ -300,8 +315,32 @@ export default function AnalyticsCharts({
             <span className="text-[10px] sm:text-xs text-slate-400 font-medium">Delegates</span>
           </div>
           <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-slate-500 flex items-center gap-1">
-            <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 flex-shrink-0" />
-            <span className="truncate">Across all units</span>
+            <span className="truncate">
+              {overview.total_normal_registrations ?? (overview.total_registrations - (overview.total_spot_registrations || 0))} Normal • {overview.total_spot_registrations || 0} Spot
+            </span>
+          </div>
+        </div>
+
+        {/* Spot Registrations (Dedicated Spotlight Card) */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50/60 p-3.5 sm:p-5 rounded-2xl border border-amber-200/90 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-800">
+              Spot Registrations
+            </span>
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5 fill-current text-amber-600" />
+            </div>
+          </div>
+          <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5 sm:gap-2">
+            <span className="text-xl sm:text-3xl font-heading font-black text-amber-900 tracking-tight">
+              {overview.total_spot_registrations || 0}
+            </span>
+            <span className="text-[10px] sm:text-xs text-amber-700/80 font-medium">On-Site</span>
+          </div>
+          <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-amber-800 flex items-center gap-1 font-medium">
+            <span className="truncate">
+              {overview.spot_admitted || 0} Admitted ({Number(overview.total_spot_registrations) > 0 ? Math.round(((overview.spot_admitted || 0) / overview.total_spot_registrations) * 100) : 0}%)
+            </span>
           </div>
         </div>
 
@@ -322,7 +361,9 @@ export default function AnalyticsCharts({
             <span className="text-[10px] sm:text-xs text-emerald-100 font-medium">Admitted</span>
           </div>
           <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-emerald-100/90 flex items-center gap-1">
-            <span className="truncate">Verified at gates</span>
+            <span className="truncate">
+              {overview.normal_admitted ?? (overview.total_admitted - (overview.spot_admitted || 0))} Norm • {overview.spot_admitted || 0} Spot
+            </span>
           </div>
         </div>
 
@@ -343,7 +384,7 @@ export default function AnalyticsCharts({
             <span className="text-[10px] sm:text-xs text-slate-400 font-medium">Pending</span>
           </div>
           <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-slate-500">
-            <span className="truncate">Awaiting arrival</span>
+            <span className="truncate">Awaiting gate check-in</span>
           </div>
         </div>
 
@@ -391,7 +432,7 @@ export default function AnalyticsCharts({
             <button
               onClick={handleShareWhatsApp}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
-              title="Share Attendee Breakdown via WhatsApp (Highest Count First)"
+              title="Share Admission & Spot Registration Details via WhatsApp"
             >
               <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                 <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
@@ -399,21 +440,21 @@ export default function AnalyticsCharts({
               <span>Share via WhatsApp</span>
             </button>
 
-            {/* Copy Breakdown Button */}
+            {/* Copy Admission Details Button */}
             <button
               onClick={handleCopyBreakdown}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition active:scale-95 cursor-pointer"
-              title="Copy Breakdown Text"
+              title="Copy Admission & Spot Registration Details to Clipboard"
             >
               {copiedBreakdown ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700">Copied!</span>
+                  <span className="text-emerald-700">Admission Details Copied!</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Copy</span>
+                  <span>Copy Admission Details</span>
                 </>
               )}
             </button>
@@ -473,39 +514,43 @@ export default function AnalyticsCharts({
           {selectedHierarchyTab === 'division' && (
             <div className="space-y-4">
               {/* WhatsApp Share Banner */}
-              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs text-emerald-900">
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50/50 to-amber-50/40 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 text-xs text-emerald-950">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
-                  <span className="font-semibold">
-                    Live 12-Division breakdown formatted for WhatsApp broadcast
-                    <span className="ml-1 text-emerald-800 font-bold">
-                      (Highest Count First).
+                  <div>
+                    <span className="font-bold block sm:inline">
+                      Live Admission & Spot Registration Report
                     </span>
-                  </span>
+                    <span className="text-emerald-800/80 sm:ml-1 text-[11px]">
+                      Formatted for WhatsApp with overall check-ins and division-by-division spot breakdown.
+                    </span>
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
                   <button
                     onClick={handleShareWhatsApp}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+                    title="Share Admission & Spot Registration Report via WhatsApp"
                   >
                     <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                       <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
                     </svg>
-                    <span>WhatsApp</span>
+                    <span>Share via WhatsApp</span>
                   </button>
                   <button
                     onClick={handleCopyBreakdown}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-emerald-300 transition active:scale-95 cursor-pointer shadow-2xs"
+                    title="Copy Admission & Spot Registration Details to Clipboard"
                   >
                     {copiedBreakdown ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700">Copied!</span>
+                        <span className="text-emerald-700">Admission Details Copied!</span>
                       </>
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Copy Text</span>
+                        <span>Copy Admission Details</span>
                       </>
                     )}
                   </button>
@@ -523,6 +568,10 @@ export default function AnalyticsCharts({
                   const divInstitutionsCount = allColleges.filter(
                     (c) => String(c.division_id) === String(div.id)
                   ).length;
+                  const spotCount = Number(div.spot_count) || 0;
+                  const spotAdmitted = Number(div.spot_admitted_count) || 0;
+                  const normalCount = Number(div.normal_count) ?? (div.total_attendees - spotCount);
+                  const normalAdmitted = Number(div.normal_admitted_count) ?? (div.admitted_count - spotAdmitted);
 
                   return (
                     <div 
@@ -540,9 +589,9 @@ export default function AnalyticsCharts({
                       className="p-4 rounded-2xl border border-slate-200/80 hover:border-emerald-400 hover:shadow-md transition bg-slate-50/50 hover:bg-white space-y-2 cursor-pointer group focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4 text-emerald-600" />
-                          <span className="font-heading font-bold text-sm text-slate-800">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <Building className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span className="font-heading font-bold text-sm text-slate-800 truncate">
                             {div.name}
                           </span>
                           {div.code && (
@@ -550,8 +599,14 @@ export default function AnalyticsCharts({
                               {div.code}
                             </span>
                           )}
+                          {spotCount > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                              <Zap className="w-2.5 h-2.5 fill-current text-amber-600" />
+                              <span>{spotCount} Spot</span>
+                            </span>
+                          )}
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex-shrink-0">
                           <span className="font-bold text-sm text-slate-900">
                             {div.total_attendees}{quota > 0 ? ` / ${quota}` : ''}
                           </span>
@@ -570,12 +625,29 @@ export default function AnalyticsCharts({
                       </div>
 
                       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-slate-500 pt-1">
-                        <span>
-                          Quota: <strong className="text-slate-800">{quota > 0 ? `${quota} seats` : 'Not set'}</strong>
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span>
+                            Normal: <strong className="text-slate-800">{normalCount}</strong>
+                            {normalAdmitted > 0 && (
+                              <span className="text-slate-400 ml-0.5 text-[10px]">({normalAdmitted} adm)</span>
+                            )}
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span className={spotCount > 0 ? 'text-amber-800 font-semibold' : 'text-slate-500'}>
+                            Spot: <strong className={spotCount > 0 ? 'text-amber-900' : 'text-slate-700'}>{spotCount}</strong>
+                            {spotAdmitted > 0 && (
+                              <span className="text-amber-700 ml-0.5 text-[10px]">({spotAdmitted} adm)</span>
+                            )}
+                          </span>
                           {quota > 0 && (
-                            <span className="ml-1 text-slate-400">({Math.max(0, quota - div.total_attendees)} left)</span>
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-400">
+                                Quota: <strong className="text-slate-700">{quota}</strong>
+                              </span>
+                            </>
                           )}
-                        </span>
+                        </div>
                         <div className="flex items-center gap-3">
                           <span>
                             Admitted: <strong className="text-emerald-700">{div.admitted_count}</strong> ({admittedPct}%)
@@ -782,6 +854,10 @@ export default function AnalyticsCharts({
         const divPct = divQuota > 0
           ? Math.round((selectedDivisionModal.total_attendees / divQuota) * 100)
           : 0;
+        const divSpotCount = Number(selectedDivisionModal.spot_count) || 0;
+        const divSpotAdmitted = Number(selectedDivisionModal.spot_admitted_count) || 0;
+        const divNormalCount = Number(selectedDivisionModal.normal_count) ?? (selectedDivisionModal.total_attendees - divSpotCount);
+        const divNormalAdmitted = Number(selectedDivisionModal.normal_admitted_count) ?? (selectedDivisionModal.admitted_count - divSpotAdmitted);
 
         return (
           <div
@@ -812,9 +888,15 @@ export default function AnalyticsCharts({
                             {selectedDivisionModal.code}
                           </span>
                         )}
+                        {divSpotCount > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                            <Zap className="w-2.5 h-2.5 fill-current text-amber-600" />
+                            <span>{divSpotCount} Spot</span>
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-500">
-                        Dars / College Breakdown &bull; {divColleges.length} Institutions
+                        {divColleges.length} Institutions &bull; {divNormalCount} Normal ({divNormalAdmitted} adm) &bull; {divSpotCount} Spot ({divSpotAdmitted} adm)
                       </p>
                     </div>
                   </div>
@@ -827,8 +909,8 @@ export default function AnalyticsCharts({
                       <span className="text-xs font-bold text-emerald-700 ml-1">
                         ({divPct}%)
                       </span>
-                      <span className="block text-[10px] text-slate-400">
-                        Admitted: {selectedDivisionModal.admitted_count}
+                      <span className="block text-[10px] text-slate-500 font-medium">
+                        Admitted: <strong className="text-emerald-700">{selectedDivisionModal.admitted_count}</strong>
                       </span>
                     </div>
                     <button

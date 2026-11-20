@@ -4,6 +4,8 @@ import { GraduationCap } from 'lucide-react';
 export default function CollegeProgressCard({ col, showDivisionName = true }) {
   const quota = Number(col.allocated_quota) || 0;
   const count = Number(col.total_attendees) || 0;
+  const spotCount = Number(col.spot_count) || 0;
+  const spotAdmitted = Number(col.spot_admitted_count) || 0;
   const pct = quota > 0 ? Math.round((count / quota) * 100) : 0;
   const isFull = quota > 0 && count >= quota;
 
@@ -55,9 +57,14 @@ export default function CollegeProgressCard({ col, showDivisionName = true }) {
         />
       </div>
 
-      <div className="flex justify-between text-[10px] text-slate-400">
+      <div className="flex justify-between items-center text-[10px] text-slate-400">
         <span>
           Admitted: <strong className="text-slate-600">{col.admitted_count}</strong>
+          {spotCount > 0 && (
+            <span className="ml-1.5 text-amber-800 font-semibold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+              ⚡ {spotCount} Spot {spotAdmitted > 0 ? `(${spotAdmitted} adm)` : ''}
+            </span>
+          )}
         </span>
         <span>
           {quota > 0

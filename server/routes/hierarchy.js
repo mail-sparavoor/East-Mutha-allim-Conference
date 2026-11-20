@@ -216,7 +216,11 @@ router.get('/division/:slug/breakdown', async (req, res) => {
     const summary = await db.prepare(`
       SELECT
         COUNT(*) as total_attendees,
+        SUM(CASE WHEN registration_type = 'spot' THEN 1 ELSE 0 END) as spot_count,
+        SUM(CASE WHEN registration_type = 'normal' OR registration_type IS NULL THEN 1 ELSE 0 END) as normal_count,
         SUM(CASE WHEN status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        SUM(CASE WHEN status = 'Admitted' AND registration_type = 'spot' THEN 1 ELSE 0 END) as spot_admitted_count,
+        SUM(CASE WHEN status = 'Admitted' AND (registration_type = 'normal' OR registration_type IS NULL) THEN 1 ELSE 0 END) as normal_admitted_count,
         SUM(CASE WHEN status = 'Registered' THEN 1 ELSE 0 END) as pending_count
       FROM attendees
       WHERE division_id = ? AND status != 'Cancelled'
@@ -229,7 +233,11 @@ router.get('/division/:slug/breakdown', async (req, res) => {
         i.code,
         COALESCE(i.quota, 0) as allocated_quota,
         COUNT(a.id) as total_attendees,
-        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count
+        SUM(CASE WHEN a.registration_type = 'spot' THEN 1 ELSE 0 END) as spot_count,
+        SUM(CASE WHEN a.registration_type = 'normal' OR a.registration_type IS NULL THEN 1 ELSE 0 END) as normal_count,
+        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        SUM(CASE WHEN a.status = 'Admitted' AND a.registration_type = 'spot' THEN 1 ELSE 0 END) as spot_admitted_count,
+        SUM(CASE WHEN a.status = 'Admitted' AND (a.registration_type = 'normal' OR a.registration_type IS NULL) THEN 1 ELSE 0 END) as normal_admitted_count
       FROM institutions i
       LEFT JOIN attendees a ON (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.division_id = i.division_id AND a.status != 'Cancelled'
       WHERE i.division_id = ?
@@ -249,7 +257,11 @@ router.get('/division/:slug/breakdown', async (req, res) => {
         division_name: division.name,
         allocated_quota: quota,
         total_attendees: count,
+        spot_count: Number(row.spot_count) || 0,
+        normal_count: Number(row.normal_count) || 0,
         admitted_count: admitted,
+        spot_admitted_count: Number(row.spot_admitted_count) || 0,
+        normal_admitted_count: Number(row.normal_admitted_count) || 0,
         remaining: quota > 0 ? Math.max(0, quota - count) : 0,
         quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0
       };
@@ -260,7 +272,11 @@ router.get('/division/:slug/breakdown', async (req, res) => {
       0
     );
     const totalAttendees = Number(summary?.total_attendees) || 0;
+    const spotCount = Number(summary?.spot_count) || 0;
+    const normalCount = Number(summary?.normal_count) || 0;
     const admittedCount = Number(summary?.admitted_count) || 0;
+    const spotAdmittedCount = Number(summary?.spot_admitted_count) || 0;
+    const normalAdmittedCount = Number(summary?.normal_admitted_count) || 0;
     const pendingCount = Number(summary?.pending_count) || 0;
     const activeInstitutions = byCollege.filter((c) => c.total_attendees > 0).length;
 
@@ -273,7 +289,11 @@ router.get('/division/:slug/breakdown', async (req, res) => {
       },
       overview: {
         total_attendees: totalAttendees,
+        spot_count: spotCount,
+        normal_count: normalCount,
         admitted_count: admittedCount,
+        spot_admitted_count: spotAdmittedCount,
+        normal_admitted_count: normalAdmittedCount,
         pending_count: pendingCount,
         allocated_quota: allocatedQuota,
         remaining_quota: allocatedQuota > 0 ? Math.max(0, allocatedQuota - totalAttendees) : 0,

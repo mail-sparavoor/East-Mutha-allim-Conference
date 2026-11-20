@@ -102,7 +102,7 @@ router.get('/analytics', requireAdmin, async (req, res) => {
     const pendingAdm = Number(overview?.pending_admissions) || 0;
     const admissionRate = totalReg > 0 ? Math.round((totalAdm / totalReg) * 100) : 0;
 
-    // 2. Breakdown by Division with allocated quota
+    // 2. Breakdown by Division with allocated quota and spot registrations
     const divisionBreakdown = await db.prepare(`
       SELECT 
         d.id,
@@ -110,10 +110,14 @@ router.get('/analytics', requireAdmin, async (req, res) => {
         d.code,
         d.slug,
         COUNT(a.id) as total_attendees,
+        SUM(CASE WHEN a.registration_type = 'spot' THEN 1 ELSE 0 END) as spot_count,
+        SUM(CASE WHEN a.registration_type = 'normal' OR a.registration_type IS NULL THEN 1 ELSE 0 END) as normal_count,
         SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        SUM(CASE WHEN a.status = 'Admitted' AND a.registration_type = 'spot' THEN 1 ELSE 0 END) as spot_admitted_count,
+        SUM(CASE WHEN a.status = 'Admitted' AND (a.registration_type = 'normal' OR a.registration_type IS NULL) THEN 1 ELSE 0 END) as normal_admitted_count,
         COALESCE((SELECT SUM(i.quota) FROM institutions i WHERE i.division_id = d.id AND i.quota > 0), 0) as allocated_quota
       FROM divisions d
-      LEFT JOIN attendees a ON d.id = a.division_id
+      LEFT JOIN attendees a ON d.id = a.division_id AND a.status != 'Cancelled'
       GROUP BY d.id, d.name, d.code, d.slug
       ORDER BY total_attendees DESC, d.name ASC
     `).all();
@@ -170,7 +174,11 @@ router.get('/analytics', requireAdmin, async (req, res) => {
         d.id as division_id,
         d.name as division_name,
         COUNT(a.id) as total_attendees,
-        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count
+        SUM(CASE WHEN a.registration_type = 'spot' THEN 1 ELSE 0 END) as spot_count,
+        SUM(CASE WHEN a.registration_type = 'normal' OR a.registration_type IS NULL THEN 1 ELSE 0 END) as normal_count,
+        SUM(CASE WHEN a.status = 'Admitted' THEN 1 ELSE 0 END) as admitted_count,
+        SUM(CASE WHEN a.status = 'Admitted' AND a.registration_type = 'spot' THEN 1 ELSE 0 END) as spot_admitted_count,
+        SUM(CASE WHEN a.status = 'Admitted' AND (a.registration_type = 'normal' OR a.registration_type IS NULL) THEN 1 ELSE 0 END) as normal_admitted_count
       FROM institutions i
       LEFT JOIN divisions d ON i.division_id = d.id
       LEFT JOIN attendees a ON (a.institution_id = i.id OR (a.institution_id IS NULL AND LOWER(a.college) = LOWER(i.name))) AND a.status != 'Cancelled'
@@ -225,12 +233,22 @@ router.get('/analytics', requireAdmin, async (req, res) => {
         byDivision: (divisionBreakdown || []).map(r => {
           const quota = Number(r.allocated_quota) || 0;
           const count = Number(r.total_attendees) || 0;
+          const spotCount = Number(r.spot_count) || 0;
+          const normalCount = Number(r.normal_count) || 0;
+          const admitted = Number(r.admitted_count) || 0;
+          const spotAdmitted = Number(r.spot_admitted_count) || 0;
+          const normalAdmitted = Number(r.normal_admitted_count) || 0;
           return {
             ...r,
             total_attendees: count,
-            admitted_count: Number(r.admitted_count) || 0,
+            spot_count: spotCount,
+            normal_count: normalCount,
+            admitted_count: admitted,
+            spot_admitted_count: spotAdmitted,
+            normal_admitted_count: normalAdmitted,
             allocated_quota: quota,
-            quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0
+            quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0,
+            admission_rate: count > 0 ? Math.round((admitted / count) * 100) : 0
           };
         }),
         bySector: (sectorBreakdown || []).map(r => ({
@@ -246,12 +264,22 @@ router.get('/analytics', requireAdmin, async (req, res) => {
         byCollege: (collegeBreakdown || []).map(r => {
           const quota = Number(r.allocated_quota) || 0;
           const count = Number(r.total_attendees) || 0;
+          const spotCount = Number(r.spot_count) || 0;
+          const normalCount = Number(r.normal_count) || 0;
+          const admitted = Number(r.admitted_count) || 0;
+          const spotAdmitted = Number(r.spot_admitted_count) || 0;
+          const normalAdmitted = Number(r.normal_admitted_count) || 0;
           return {
             ...r,
             total_attendees: count,
-            admitted_count: Number(r.admitted_count) || 0,
+            spot_count: spotCount,
+            normal_count: normalCount,
+            admitted_count: admitted,
+            spot_admitted_count: spotAdmitted,
+            normal_admitted_count: normalAdmitted,
             allocated_quota: quota,
-            quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0
+            quota_percentage: quota > 0 ? Math.round((count / quota) * 100) : 0,
+            admission_rate: count > 0 ? Math.round((admitted / count) * 100) : 0
           };
         })
       },

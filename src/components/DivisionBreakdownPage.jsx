@@ -11,7 +11,8 @@ import {
   Check,
   AlertCircle,
   ArrowLeft,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 import CollegeProgressCard from './CollegeProgressCard';
 import { api } from '../utils/api';
@@ -76,19 +77,29 @@ export default function DivisionBreakdownPage({ slug, eventSettings, onBack }) {
       overview.allocated_quota > 0
         ? `${overview.total_attendees}/${overview.allocated_quota} (${overview.quota_percentage}%)`
         : `${overview.total_attendees}`;
-    let text = `*${division.name} Division — Delegate Breakdown*\n`;
+    const spotCount = Number(overview.spot_count) || 0;
+    const normalCount = Number(overview.normal_count) ?? (overview.total_attendees - spotCount);
+    const spotAdm = Number(overview.spot_admitted_count) || 0;
+    const normalAdm = Number(overview.normal_admitted_count) ?? (overview.admitted_count - spotAdm);
+
+    let text = `*${division.name} Division — Live Admission Breakdown*\n`;
     text += `_*Muthaallim Conference 2026*_\n\n`;
     text += `*Total Registered:* ${quotaText}\n`;
-    text += `*Admitted:* ${overview.admitted_count}\n`;
+    text += `↳ Normal: ${normalCount} | Spot: ${spotCount}\n`;
+    text += `*Total Admitted:* ${overview.admitted_count} (${overview.admission_rate}%)\n`;
+    text += `↳ Normal Admitted: ${normalAdm} | Spot Admitted: ${spotAdm}\n`;
     text += `*Active Dars / Colleges:* ${overview.active_institutions} / ${overview.total_institutions}\n\n`;
     text += `*Dars / College Breakdown:*\n`;
 
     byCollege.forEach((col, i) => {
       const q = Number(col.allocated_quota) || 0;
       const c = Number(col.total_attendees) || 0;
+      const s = Number(col.spot_count) || 0;
+      const adm = Number(col.admitted_count) || 0;
       const pct = q > 0 ? Math.round((c / q) * 100) : 0;
       const qStr = q > 0 ? `${c}/${q} (${pct}%)` : `${c}`;
-      text += `${i + 1}. ${col.college} — *${qStr}*\n`;
+      const spotStr = s > 0 ? ` (Spot: ${s})` : '';
+      text += `${i + 1}. ${col.college} — *${qStr}* [${adm} Admitted]${spotStr}\n`;
     });
     return text.trim();
   };
@@ -184,10 +195,7 @@ export default function DivisionBreakdownPage({ slug, eventSettings, onBack }) {
           : overview.total_attendees,
       icon: Users,
       accent: 'text-emerald-600 bg-emerald-50 border-emerald-200',
-      sub:
-        overview.allocated_quota > 0
-          ? `${overview.remaining_quota} seats remaining`
-          : 'Allocated quota not set'
+      sub: `${overview.normal_count ?? (overview.total_attendees - (overview.spot_count || 0))} Normal • ${overview.spot_count || 0} Spot`
     },
     {
       label: 'Quota Completion',
@@ -201,7 +209,7 @@ export default function DivisionBreakdownPage({ slug, eventSettings, onBack }) {
       value: overview.admitted_count,
       icon: UserCheck,
       accent: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-      sub: `${overview.admission_rate}% admission rate`
+      sub: `${overview.admission_rate}% admission rate (${overview.spot_admitted_count || 0} spot admitted)`
     },
     {
       label: 'Pending Check-In',
@@ -229,6 +237,12 @@ export default function DivisionBreakdownPage({ slug, eventSettings, onBack }) {
               {division.code && (
                 <span className="text-xs font-mono bg-white/15 px-2 py-0.5 rounded-lg border border-white/20">
                   {division.code}
+                </span>
+              )}
+              {Number(overview.spot_count) > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-400/25 border border-amber-300/40 text-amber-200 px-2 py-0.5 rounded-lg">
+                  <Zap className="w-3 h-3 fill-current text-amber-300" />
+                  <span>{overview.spot_count} Spot</span>
                 </span>
               )}
             </div>
